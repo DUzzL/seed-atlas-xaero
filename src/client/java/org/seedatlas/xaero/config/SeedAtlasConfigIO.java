@@ -1,0 +1,210 @@
+package org.seedatlas.xaero.config;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.util.Map;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+final class SeedAtlasConfigIO {
+	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+
+	private SeedAtlasConfigIO() {
+	}
+
+	static SeedAtlasConfig load(final Path path) throws IOException {
+		SeedAtlasConfig config = new SeedAtlasConfig();
+		if (!Files.isRegularFile(path)) {
+			return config;
+		}
+
+		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+			JsonElement rootElement = JsonParser.parseReader(reader);
+			if (!rootElement.isJsonObject()) {
+				throw new IOException("Seed Atlas config root must be a JSON object");
+			}
+
+			JsonObject root = rootElement.getAsJsonObject();
+			int loadedVersion = integer(root, "version", 1);
+			JsonObject layer = object(root, "layer");
+			config.setLayerEnabled(bool(layer, "enabled", config.layerEnabled()));
+			int loadedOpacity = integer(layer, "opacity", config.opacity());
+			// Version 2's 75% default exposed Xaero's black/unexplored background and
+			// produced a bright circle around locally loaded chunks. Migrate only that
+			// exact legacy default; every other custom opacity remains untouched.
+			config.setOpacity(loadedVersion <= 2 && loadedOpacity == 191 ? SeedAtlasConfig.DEFAULT_OPACITY : loadedOpacity);
+
+			JsonObject structures = object(root, "structures");
+			config.setStructuresEnabled(bool(structures, "enabled", config.structuresEnabled()));
+
+			JsonObject performance = object(root, "performance");
+			int loadedBiomeResolution = integer(
+				performance, "biomeResolution", config.biomeResolution());
+			// The pre-batch renderer used 4x as a defensive default because every
+			// Xaero leaf caused hundreds of native calls. ABI 3 renders a whole
+			// raster per call, so migrate that exact legacy default to full detail.
+			config.setBiomeResolution(
+				loadedVersion <= 3 && loadedBiomeResolution == 4
+					? SeedAtlasConfig.DEFAULT_BIOME_RESOLUTION
+					: loadedBiomeResolution);
+			config.setWorkerThreads(integer(performance, "workerThreads", config.workerThreads()));
+			int loadedPrefetch = integer(performance, "prefetchRadius", config.prefetchRadius());
+			// Prefetch no longer runs during normal gameplay. Migrate the old
+			// default of 2 down to 1 so map-open prefetch stays light.
+			if (loadedVersion <= 4 && loadedPrefetch == 2) {
+				loadedPrefetch = SeedAtlasConfig.DEFAULT_PREFETCH_RADIUS;
+			}
+			config.setPrefetchRadius(loadedPrefetch);
+
+			JsonObject generation = object(root, "worldGeneration");
+			config.setLargeBiomes(bool(generation, "largeBiomes", config.largeBiomes()));
+
+			JsonObject heights = object(root, "biomeSampleY");
+			config.setOverworldY(integer(heights, "overworld", config.overworldY()));
+			config.setNetherY(integer(heights, "nether", config.netherY()));
+			config.setEndY(integer(heights, "end", config.endY()));
+
+			JsonObject markers = object(root, "markers");
+			for (MarkerType marker : MarkerType.all()) {
+				config.setMarkerEnabled(marker.id(), bool(markers, marker.id(), marker.enabledByDefault()));
+			}
+
+			JsonObject profiles = object(root, "seeds");
+			for (Map.Entry<String, JsonElement> entry : profiles.entrySet()) {
+				if (entry.getKey().isBlank() || !entry.getValue().isJsonObject()) {
+					continue;
+				}
+				JsonObject profile = entry.getValue().getAsJsonObject();
+				Long seed = longValue(profile, "value");
+				if (seed == null) {
+					continue;
+				}
+				String input = string(profile, "input", Long.toString(seed));
+				String label = string(profile, "label", "");
+				config.putSeedProfile(entry.getKey(), new SeedAtlasConfig.SeedProfile(input, seed, label));
+			}
+			return config;
+		} catch (RuntimeException exception) {
+			throw new IOException("Invalid Seed Atlas config JSON", exception);
+		}
+	}
+
+	static void save(final Path path, final SeedAtlasConfig config) throws IOException {
+		Path directory = path.getParent();
+		if (directory != null) {
+			Files.createDirectories(directory);
+		}
+
+		JsonObject root = new JsonObject();
+		root.addProperty("version", SeedAtlasConfig.CURRENT_VERSION);
+
+		JsonObject layer = new JsonObject();
+		layer.addProperty("enabled", config.layerEnabled());
+		layer.addProperty("opacity", config.opacity());
+		root.add("layer", layer);
+
+		JsonObject structures = new JsonObject();
+		structures.addProperty("enabled", config.structuresEnabled());
+		root.add("structures", structures);
+
+		JsonObject performance = new JsonObject();
+		performance.addProperty("biomeResolution", config.biomeResolution());
+		performance.addProperty("workerThreads", config.workerThreads());
+		performance.addProperty("prefetchRadius", config.prefetchRadius());
+		root.add("performance", performance);
+
+		JsonObject generation = new JsonObject();
+		generation.addProperty("largeBiomes", config.largeBiomes());
+		root.add("worldGeneration", generation);
+
+		JsonObject heights = new JsonObject();
+		heights.addProperty("overworld", config.overworldY());
+		heights.addProperty("nether", config.netherY());
+		heights.addProperty("end", config.endY());
+		root.add("biomeSampleY", heights);
+
+		JsonObject markers = new JsonObject();
+		for (Map.Entry<String, Boolean> marker : config.markerSnapshot().entrySet()) {
+			markers.addProperty(marker.getKey(), marker.getValue());
+		}
+		root.add("markers", markers);
+
+		JsonObject profiles = new JsonObject();
+		for (Map.Entry<String, SeedAtlasConfig.SeedProfile> entry : config.profileSnapshot().entrySet()) {
+			SeedAtlasConfig.SeedProfile seed = entry.getValue();
+			JsonObject profile = new JsonObject();
+			profile.addProperty("input", seed.input());
+			profile.addProperty("value", seed.seed());
+			profile.addProperty("label", seed.contextLabel());
+			profiles.add(entry.getKey(), profile);
+		}
+		root.add("seeds", profiles);
+
+		Path temporary = path.resolveSibling(path.getFileName() + ".tmp");
+		try (Writer writer = Files.newBufferedWriter(
+			temporary,
+			StandardCharsets.UTF_8,
+			StandardOpenOption.CREATE,
+			StandardOpenOption.TRUNCATE_EXISTING,
+			StandardOpenOption.WRITE
+		)) {
+			GSON.toJson(root, writer);
+		}
+
+		try {
+			Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+		} catch (AtomicMoveNotSupportedException exception) {
+			Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+		}
+	}
+
+	private static JsonObject object(final JsonObject parent, final String key) {
+		JsonElement element = parent.get(key);
+		return element != null && element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
+	}
+
+	private static boolean bool(final JsonObject object, final String key, final boolean fallback) {
+		JsonElement element = object.get(key);
+		return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isBoolean() ? element.getAsBoolean() : fallback;
+	}
+
+	private static int integer(final JsonObject object, final String key, final int fallback) {
+		JsonElement element = object.get(key);
+		if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber()) {
+			return fallback;
+		}
+		try {
+			return element.getAsInt();
+		} catch (NumberFormatException exception) {
+			return fallback;
+		}
+	}
+
+	private static Long longValue(final JsonObject object, final String key) {
+		JsonElement element = object.get(key);
+		if (element == null || !element.isJsonPrimitive()) {
+			return null;
+		}
+		try {
+			return element.getAsLong();
+		} catch (NumberFormatException exception) {
+			return null;
+		}
+	}
+
+	private static String string(final JsonObject object, final String key, final String fallback) {
+		JsonElement element = object.get(key);
+		return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isString() ? element.getAsString() : fallback;
+	}
+}
