@@ -683,6 +683,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
 {
     StructureConfig config;
     Generator generator;
+    SurfaceNoise end_surface;
     int engine_type = structure_type;
     int output_type = structure_type;
     int32_t reg_x0, reg_z0, reg_x1, reg_z1;
@@ -716,6 +717,11 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
         result = setup_dimension_generator(context, config.dim, &generator);
         if (result != SAX_OK)
             return result;
+        /* End Cities only generate when the island surface around the start
+           chunk is high enough; the biome check alone accepts positions over
+           small islands and the void between them. */
+        if (engine_type == End_City)
+            initSurfaceNoise(&end_surface, DIM_END, context->seed);
     }
 
     /* The 20 dragon-fight gateways are fixed starts in addition to the
@@ -742,15 +748,21 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
                                  reg_x, reg_z, &position) ||
                 !in_box(position, min_x, min_z, max_x, max_z))
                 continue;
-            if (output_type == SAX_END_SHIP &&
-                !end_city_has_ship(context->seed, position))
-                continue;
             if (check_biome && engine_type != End_Island) {
                 if (!isViableStructurePos(engine_type, &generator,
                                           position.x, position.z, 0))
                     continue;
+                if (engine_type == End_City &&
+                    !isViableEndCityTerrain(&generator, &end_surface,
+                                            position.x, position.z))
+                    continue;
                 flags |= SAX_RESULT_BIOME_CHECKED | SAX_RESULT_BIOME_VIABLE;
             }
+            /* Ship pieces are only meaningful for a city that generates, so
+               run the (comparatively expensive) piece layout last. */
+            if (output_type == SAX_END_SHIP &&
+                !end_city_has_ship(context->seed, position))
+                continue;
             if (engine_type == End_Island)
                 flags |= SAX_RESULT_APPROXIMATE;
             if (!append_result(out_results, capacity, &count, output_type,

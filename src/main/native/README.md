@@ -25,10 +25,11 @@ area, and callers can keep a coarser parent tile visible while finer work runs.
 - A checked structure result passed `isViableStructurePos`, i.e. the engine's
   biome-level check. It does not promise that terrain, jigsaw placement,
   post-processing, or a server datapack permits the final structure. In
-  particular, mansion/temple terrain and End City surface-height checks are not
-  part of this small ABI.
+  particular, mansion/temple terrain checks are not part of this small ABI.
+  End City results additionally pass the engine's End surface-height check
+  (`isViableEndCityTerrain`), matching the Seed Atlas application.
 - End Ship markers are derived from predicted End City pieces after the biome
-  check, but inherit the End City terrain limitation.
+  and surface-height checks.
 - End Island markers are decorator attempts and are marked approximate.
 - Ore-vein markers reproduce Seed Atlas' coarse projection: at most one sampled
   vein body per 128x128 marker tile. They do not enumerate ore blocks and do
