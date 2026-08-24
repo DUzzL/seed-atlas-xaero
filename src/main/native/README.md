@@ -24,12 +24,20 @@ area, and callers can keep a coarser parent tile visible while finer work runs.
   generation.
 - A checked structure result passed `isViableStructurePos`, i.e. the engine's
   biome-level check. It does not promise that terrain, jigsaw placement,
-  post-processing, or a server datapack permits the final structure. In
-  particular, mansion/temple terrain and End City surface-height checks are not
-  part of this small ABI.
+  post-processing, or a server datapack permits the final structure. Desert
+  pyramids, jungle temples, and mansions have additional Overworld surface
+  checks that the engine cannot reproduce exactly; their markers are retained
+  but marked approximate. The available depth-noise heuristic is deliberately
+  not used as a hard filter because it can hide real structures. Desert wells
+  and amethyst geodes are also marked approximate because their final block
+  and terrain gates are unavailable. End City results additionally pass the
+  engine's exact End surface-height check (`isViableEndCityTerrain`).
 - End Ship markers are derived from predicted End City pieces after the biome
-  check, but inherit the End City terrain limitation.
-- End Island markers are decorator attempts and are marked approximate.
+  and surface-height checks.
+- End Island markers use the placed-feature RNG, include the generated Y and
+  radius, and return both islands when an attempt creates two. Checked results
+  additionally require the `small_end_islands` biome; unchecked results remain
+  raw decorator attempts.
 - Ore-vein markers reproduce Seed Atlas' coarse projection: at most one sampled
   vein body per 128x128 marker tile. They do not enumerate ore blocks and do
   not account for terrain exposure.

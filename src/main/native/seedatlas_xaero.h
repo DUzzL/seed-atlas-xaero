@@ -175,6 +175,7 @@ SAX_API uint32_t sax_biome_color(int32_t biome_id);
  *
  * out_results contains SAX_RESULT_STRIDE int32 values per result:
  *   [type, block_x, block_y_or_SAX_UNKNOWN_Y, block_z, flags, detail]
+ * End Island results include their generated Y and use detail for the radius.
  *
  * Returns the number written, capacity + 1 when truncated, or sax_error.
  */

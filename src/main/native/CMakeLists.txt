@@ -5,10 +5,10 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-get_filename_component(SEEDATLAS_ENGINE_DIR
+get_filename_component(SEEDATLAS_ENGINE_DEFAULT_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../../seedatlas-engine" ABSOLUTE)
-set(SEEDATLAS_ENGINE_DIR "${SEEDATLAS_ENGINE_DIR}" CACHE PATH
-    "Path to the bundled Seed Atlas generation engine")
+set(SEEDATLAS_ENGINE_DIR "${SEEDATLAS_ENGINE_DEFAULT_DIR}" CACHE PATH
+    "Path to the Seed Atlas generation engine")
 
 set(SEEDATLAS_ENGINE_SOURCES
     "${SEEDATLAS_ENGINE_DIR}/finders.c"
@@ -39,6 +39,11 @@ set_target_properties(seedatlas_xaero PROPERTIES
     C_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES
 )
+if(APPLE)
+    set_target_properties(seedatlas_xaero PROPERTIES
+        INSTALL_NAME_DIR "@rpath"
+    )
+endif()
 
 if(MSVC)
     target_compile_options(seedatlas_xaero PRIVATE /W4 /O2)

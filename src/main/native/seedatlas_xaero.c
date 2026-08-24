@@ -673,6 +673,80 @@ static int end_city_has_ship(uint64_t seed, Pos position)
     return 0;
 }
 
+static int structure_needs_unavailable_terrain(int structure_type)
+{
+    switch (structure_type) {
+    case Desert_Pyramid:
+    case Jungle_Pyramid:
+    case Mansion:
+    case Desert_Well:
+    case Geode:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int32_t scan_end_islands(const sax_context *context,
+                                int32_t min_x, int32_t min_z,
+                                int32_t max_x, int32_t max_z,
+                                int32_t check_biome,
+                                int32_t *out_results, int32_t capacity)
+{
+    const Generator *end_generator =
+        context_biome_generator(context, SAX_DIM_END);
+    int32_t chunk_x0 = floor_div(min_x, 16);
+    int32_t chunk_z0 = floor_div(min_z, 16);
+    int32_t chunk_x1 = floor_div(max_x, 16);
+    int32_t chunk_z1 = floor_div(max_z, 16);
+    int32_t chunk_x, chunk_z;
+    int32_t count = 0;
+
+    if (!end_generator)
+        return SAX_ERR_ARGUMENT;
+    if (range_too_large(chunk_x0, chunk_z0, chunk_x1, chunk_z1))
+        return SAX_ERR_RANGE_TOO_LARGE;
+
+    for (chunk_z = chunk_z0; chunk_z <= chunk_z1; ++chunk_z) {
+        for (chunk_x = chunk_x0; chunk_x <= chunk_x1; ++chunk_x) {
+            EndIsland islands[2];
+            int flags = 0;
+            int island_count;
+            int i;
+
+            /* The placed feature is selected only by the small-end-islands
+               biome. Its decorator RNG may otherwise produce a raw attempt
+               in any End chunk. */
+            if (check_biome) {
+                int biome = getBiomeAt(end_generator, 16,
+                                       chunk_x, 0, chunk_z);
+                if (biome != small_end_islands)
+                    continue;
+                flags = SAX_RESULT_BIOME_CHECKED |
+                        SAX_RESULT_BIOME_VIABLE;
+            }
+
+            /* getStructurePos(End_Island) exposes only the rarity draw and
+               consumes the following RNG values in the wrong order. The
+               dedicated helper reproduces Vanilla's one-or-two island draw,
+               in-chunk X/Z, Y, and radius. */
+            island_count = getEndIslands(islands, MC_26_2, context->seed,
+                                         chunk_x, chunk_z);
+            for (i = 0; i < island_count; ++i) {
+                Pos position = {islands[i].x, islands[i].z};
+                if (!in_box(position, min_x, min_z, max_x, max_z))
+                    continue;
+                if (!append_result(out_results, capacity, &count,
+                                   SAX_END_ISLAND, islands[i].x,
+                                   islands[i].y, islands[i].z, flags,
+                                   islands[i].r))
+                    return capacity + 1;
+            }
+        }
+    }
+    return count;
+}
+
 SAX_API int32_t sax_scan_structures(const sax_context *context,
                                     int32_t structure_type,
                                     int32_t min_x, int32_t min_z,
@@ -683,6 +757,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
 {
     StructureConfig config;
     Generator generator;
+    SurfaceNoise end_surface;
     int engine_type = structure_type;
     int output_type = structure_type;
     int32_t reg_x0, reg_z0, reg_x1, reg_z1;
@@ -698,6 +773,9 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
         structure_type == SAX_ORE_VEIN_IRON)
         return scan_ore_veins(context, structure_type, min_x, min_z,
                               max_x, max_z, out_results, capacity);
+    if (structure_type == SAX_END_ISLAND)
+        return scan_end_islands(context, min_x, min_z, max_x, max_z,
+                                check_biome, out_results, capacity);
     if (structure_type == SAX_END_SHIP) {
         engine_type = End_City;
         output_type = SAX_END_SHIP;
@@ -716,6 +794,11 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
         result = setup_dimension_generator(context, config.dim, &generator);
         if (result != SAX_OK)
             return result;
+        /* End Cities only generate when the island surface around the start
+           chunk is high enough; the biome check alone accepts positions over
+           small islands and the void between them. */
+        if (engine_type == End_City)
+            initSurfaceNoise(&end_surface, DIM_END, context->seed);
     }
 
     /* The 20 dragon-fight gateways are fixed starts in addition to the
@@ -742,16 +825,26 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
                                  reg_x, reg_z, &position) ||
                 !in_box(position, min_x, min_z, max_x, max_z))
                 continue;
-            if (output_type == SAX_END_SHIP &&
-                !end_city_has_ship(context->seed, position))
-                continue;
-            if (check_biome && engine_type != End_Island) {
+            if (check_biome) {
                 if (!isViableStructurePos(engine_type, &generator,
                                           position.x, position.z, 0))
                     continue;
+                if (engine_type == End_City &&
+                    !isViableEndCityTerrain(&generator, &end_surface,
+                                            position.x, position.z))
+                    continue;
                 flags |= SAX_RESULT_BIOME_CHECKED | SAX_RESULT_BIOME_VIABLE;
             }
-            if (engine_type == End_Island)
+            /* Ship pieces are only meaningful for a city that generates, so
+               run the (comparatively expensive) piece layout last. */
+            if (output_type == SAX_END_SHIP &&
+                !end_city_has_ship(context->seed, position))
+                continue;
+            /* Cubiomes has no exact 26.2 Overworld WORLD_SURFACE_WG/block
+               sampler. Keep these potential starts visible instead of using
+               its heuristic terrain filter (which can hide real structures),
+               but expose the uncertainty to the map tooltip. */
+            if (structure_needs_unavailable_terrain(engine_type))
                 flags |= SAX_RESULT_APPROXIMATE;
             if (!append_result(out_results, capacity, &count, output_type,
                                position.x, SAX_UNKNOWN_Y, position.z, flags, 0))

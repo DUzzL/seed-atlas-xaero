@@ -36,7 +36,7 @@
     "options.seedatlas_xaero.height.end":  "Ende Y",
     "options.seedatlas_xaero.markers":  "Strukturtypen...",
     "options.seedatlas_xaero.marker":  "%s: %s",
-    "tooltip.seedatlas_xaero.approximate":  " (ungefÃ¤hr)",
+    "tooltip.seedatlas_xaero.approximate":  " (ungef\u00e4hr)",
     "tooltip.seedatlas_xaero.opacity":  "Unter 100 % wird der Seed-Layer mit Xaeros darunterliegendem Terrain gemischt.",
     "command.seedatlas_xaero.seed_set":  "Seed fÃ¼r %3$s auf %2$s (%1$s) gesetzt.",
     "command.seedatlas_xaero.seed_blank":  "Der Seed darf nicht leer sein.",

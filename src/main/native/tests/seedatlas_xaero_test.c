@@ -170,6 +170,124 @@ int main(void)
     assert(count == 1);
     assert(results[1] == 272 && results[3] == 48);
 
+    /* These starts have Vanilla terrain/block gates that cubiomes cannot
+       reproduce exactly. Keep them rather than applying the known
+       false-negative-prone depth heuristic, and label them approximate. */
+    count = sax_scan_structures(context, SAX_DESERT_PYRAMID,
+                                -3456, 80, -3456, 80, 1, results, 64);
+    assert(count == 1);
+    assert((results[4] & SAX_RESULT_APPROXIMATE) != 0);
+    count = sax_scan_structures(context, SAX_JUNGLE_TEMPLE,
+                                -1712, 352, -1712, 352, 1, results, 64);
+    assert(count == 1);
+    assert((results[4] & SAX_RESULT_APPROXIMATE) != 0);
+    count = sax_scan_structures(context, SAX_MANSION,
+                                688, 1808, 688, 1808, 1, results, 64);
+    assert(count == 1);
+    assert((results[4] & SAX_RESULT_APPROXIMATE) != 0);
+    count = sax_scan_structures(context, SAX_AMETHYST_GEODE,
+                                -256, -256, 255, 255, 0, results, 64);
+    assert(count > 0 && count <= 64);
+    for (i = 0; i < count; ++i)
+        assert((results[i * SAX_RESULT_STRIDE + 4] &
+                SAX_RESULT_APPROXIMATE) != 0);
+    count = sax_scan_structures(context, SAX_DESERT_WELL,
+                                -1024, -1024, 1023, 1023,
+                                0, results, 64);
+    assert(count > 0 && count <= 64);
+    for (i = 0; i < count; ++i)
+        assert((results[i * SAX_RESULT_STRIDE + 4] &
+                SAX_RESULT_APPROXIMATE) != 0);
+
+    /* Vanilla rejects End City attempts whose lowest rotated 5x5 terrain
+       corner is below Y=60. Keep raw scans available, but require checked
+       city and ship markers to apply that dedicated terrain rule. */
+    count = sax_scan_structures(context, SAX_END_CITY,
+                                1072, 64, 1072, 64, 0, results, 64);
+    assert(count == 1);
+    count = sax_scan_structures(context, SAX_END_CITY,
+                                1072, 64, 1072, 64, 1, results, 64);
+    assert(count == 0);
+    count = sax_scan_structures(context, SAX_END_CITY,
+                                -592, -896, -592, -896, 1, results, 64);
+    assert(count == 1);
+    assert(results[0] == SAX_END_CITY);
+    assert(results[1] == -592 && results[3] == -896);
+    assert((results[4] & (SAX_RESULT_BIOME_CHECKED |
+                          SAX_RESULT_BIOME_VIABLE)) ==
+           (SAX_RESULT_BIOME_CHECKED | SAX_RESULT_BIOME_VIABLE));
+
+    count = sax_scan_structures(context, SAX_END_SHIP,
+                                1072, 64, 1072, 64, 0, results, 64);
+    assert(count == 1);
+    count = sax_scan_structures(context, SAX_END_SHIP,
+                                1072, 64, 1072, 64, 1, results, 64);
+    assert(count == 0);
+    count = sax_scan_structures(context, SAX_END_SHIP,
+                                400, -1248, 400, -1248, 1, results, 64);
+    assert(count == 1);
+    assert(results[0] == SAX_END_SHIP);
+    assert(results[1] == 400 && results[3] == -1248);
+
+    /* Small End islands use their dedicated placed-feature RNG: one attempt
+       can create one or two islands, each with its own in-chunk X/Y/Z. */
+    count = sax_scan_structures(context, SAX_END_ISLAND,
+                                -2624, -3193, -2624, -3193,
+                                0, results, 64);
+    assert(count == 0); /* coordinate from the old generic decorator path */
+    count = sax_scan_structures(context, SAX_END_ISLAND,
+                                -2617, -3200, -2617, -3200,
+                                1, results, 64);
+    assert(count == 1);
+    assert(results[0] == SAX_END_ISLAND);
+    assert(results[1] == -2617 && results[2] == 66 && results[3] == -3200);
+    assert((results[4] & (SAX_RESULT_BIOME_CHECKED |
+                          SAX_RESULT_BIOME_VIABLE)) ==
+           (SAX_RESULT_BIOME_CHECKED | SAX_RESULT_BIOME_VIABLE));
+    assert((results[4] & SAX_RESULT_APPROXIMATE) == 0);
+    assert(results[5] >= 4 && results[5] <= 6); /* generated radius */
+
+    count = sax_scan_structures(context, SAX_END_ISLAND,
+                                -3440, -4800, -3425, -4785,
+                                1, results, 64);
+    assert(count == 2);
+    assert(results[1] == -3439 && results[2] == 60 && results[3] == -4800);
+    assert(results[SAX_RESULT_STRIDE + 1] == -3428);
+    assert(results[SAX_RESULT_STRIDE + 2] == 66);
+    assert(results[SAX_RESULT_STRIDE + 3] == -4788);
+
+    /* A raw decoration attempt outside small_end_islands must disappear
+       when the caller requests Vanilla biome validation. */
+    count = sax_scan_structures(context, SAX_END_ISLAND,
+                                -1509, -1588, -1509, -1588,
+                                0, results, 64);
+    assert(count == 1);
+    assert(results[2] == 64);
+    count = sax_scan_structures(context, SAX_END_ISLAND,
+                                -1509, -1588, -1509, -1588,
+                                1, results, 64);
+    assert(count == 0);
+
+    /* Java Random.nextInt rejection is observable only for very rare seeds,
+       but it applies to every LINEAR random-spread structure. Verify the ABI
+       no longer exposes the old Village coordinate. */
+    {
+        sax_context *placement_context =
+            sax_create(INT64_C(329087727717716), SAX_WORLD_NORMAL);
+        assert(placement_context != NULL);
+        count = sax_scan_structures(placement_context, SAX_VILLAGE,
+                                    0, 384, 0, 384, 0, results, 64);
+        assert(count == 0);
+        count = sax_scan_structures(placement_context, SAX_VILLAGE,
+                                    384, 224, 384, 224, 0, results, 64);
+        assert(count == 1);
+        assert(results[1] == 384 && results[3] == 224);
+        count = sax_scan_structures(placement_context, SAX_VILLAGE,
+                                    384, 224, 384, 224, 1, results, 64);
+        assert(count == 0); /* corrected candidate has no viable biome */
+        sax_destroy(placement_context);
+    }
+
     assert(sax_spawn(context, 0, position) == SAX_OK);
     count = sax_scan_strongholds(context, -30000, -30000, 30000, 30000,
                                  0, results, 64);

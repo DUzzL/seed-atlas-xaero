@@ -6,12 +6,21 @@
 name: build
 on: [pull_request, push]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - name: checkout repository
         uses: actions/checkout@v6
+      - name: checkout Seed Atlas engine
+        uses: actions/checkout@v6
+        with:
+          repository: DUzzL/Seed-Atlas
+          path: seed-atlas-source
+          sparse-checkout: seedatlas-engine
       - name: validate gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
       - name: setup jdk
@@ -21,6 +30,20 @@ jobs:
           distribution: 'microsoft'
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
+      - name: build and test native source
+        env:
+          SEEDATLAS_ENGINE_DIR: ${{ github.workspace }}/seed-atlas-source/seedatlas-engine
+          RUN_TESTS: "ON"
+        run: bash scripts/native/build-native.sh linux-x86_64
+      - name: test checked-in Linux native resource
+        run: |
+          mkdir -p build/native-bundled-test
+          cc -std=c11 -UNDEBUG -Isrc/main/native \
+            src/main/native/tests/seedatlas_xaero_test.c \
+            src/main/resources/natives/linux-x86_64/seedatlas_xaero.so \
+            -Wl,-rpath,"$GITHUB_WORKSPACE/src/main/resources/natives/linux-x86_64" \
+            -o build/native-bundled-test/seedatlas_xaero_test
+          build/native-bundled-test/seedatlas_xaero_test
       - name: build
         run: ./gradlew build
       - name: capture build artifacts
