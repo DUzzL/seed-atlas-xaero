@@ -6,7 +6,7 @@ biomes and structure markers in the fullscreen Xaero's World Map.
 ## Requirements
 
 - Fabric API
-- Xaero's World Map (specific version)
+- Xaero's World Map 1.45.x for Fabric 26.2
 
 
 The server does not need this mod. On multiplayer servers the world seed stays
