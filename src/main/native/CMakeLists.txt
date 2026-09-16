@@ -5,10 +5,17 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-get_filename_component(SEEDATLAS_ENGINE_DEFAULT_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../seedatlas-engine" ABSOLUTE)
-set(SEEDATLAS_ENGINE_DIR "${SEEDATLAS_ENGINE_DEFAULT_DIR}" CACHE PATH
-    "Path to the Seed Atlas generation engine")
+set(SEEDATLAS_ENGINE_DIR "" CACHE PATH "Optional local Seed Atlas engine checkout")
+if(NOT SEEDATLAS_ENGINE_DIR)
+    include(FetchContent)
+    FetchContent_Declare(seedatlas_source
+        URL https://codeload.github.com/DUzzL/Seed-Atlas/tar.gz/fc2c628693bc72130d7c16a21636f50d57553ddf
+        URL_HASH SHA256=9b90ec564b23ee53053147068db82e0361cc79c74cb8632350a68a29acd64d10
+        SOURCE_SUBDIR seedatlas-no-cmake-subdirectory
+    )
+    FetchContent_MakeAvailable(seedatlas_source)
+    set(SEEDATLAS_ENGINE_DIR "${seedatlas_source_SOURCE_DIR}/seedatlas-engine")
+endif()
 
 set(SEEDATLAS_ENGINE_SOURCES
     "${SEEDATLAS_ENGINE_DIR}/finders.c"

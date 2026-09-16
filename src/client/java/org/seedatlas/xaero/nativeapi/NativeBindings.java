@@ -7,7 +7,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 
 final class NativeBindings {
-    static final int EXPECTED_ABI = 3;
+    static final int EXPECTED_ABI = 4;
 
     private final NativeLibraryLoader.LoadedNative library;
     private final MethodHandle abiVersion;

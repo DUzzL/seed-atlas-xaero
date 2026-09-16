@@ -50,6 +50,7 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
             return;
         }
         this.context.dimension = renderInfo.mapDimension;
+        this.context.updateZoom(renderInfo.scale);
         this.context.batchedIcons = rendererProvider.getRenderer(CustomRenderTypes.GUI_BILINEAR_PRE);
         Minecraft minecraft = Minecraft.getInstance();
         this.source.request(
@@ -104,12 +105,13 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
     ) {
         PoseStack pose = graphics.pose();
         pose.translate(partialX, partialY, optionalDepth);
-        pose.scale(optionalScale, optionalScale, 1.0F);
+        float iconScale = optionalScale * this.context.iconScale;
+        pose.scale(iconScale, iconScale, 1.0F);
         if (hovered) {
             graphics.fill(-11, -11, 11, 11, 0x99000000);
         }
         Identifier texture = Identifier.fromNamespaceAndPath(
-            "seedatlas_xaero", "textures/structure/" + marker.type().id() + ".png");
+            "seedatlas_xaero", "textures/structure/" + marker.textureId() + ".png");
         MapRenderHelper.blitIntoMultiTextureRenderer(
             pose.last().pose(),
             this.context.batchedIcons,

@@ -1,7 +1,7 @@
 # Seed Atlas Xaero native ABI
 
 `seedatlas_xaero.h` is the stable primitive C ABI used by the Java 25 FFM
-facade. It is fixed to vanilla Java Edition 26.2. The context stores only the
+facade. It is fixed to vanilla Java Edition 26.3. The context stores only the
 seed, Normal/Large Biomes flag, and immutable pre-seeded dimension generators,
 so independent calls may run concurrently without repeating generator setup.
 
@@ -17,9 +17,18 @@ same scaled `Range`/`genBiomes` levels as Seed Atlas desktop. A 256x256 texture
 therefore always costs 65,536 entries regardless of the represented world
 area, and callers can keep a coarser parent tile visible while finer work runs.
 
+ABI 4 selects Minecraft 26.3 for all generators, adds Dappled Forest (188)
+and Abandoned Camp (25), and prevents old 26.2 native binaries from loading.
+The primitive function signatures and six-int result stride remain unchanged.
+For checked camps, `detail & 0xff` is the biome and `detail & 0x100` indicates
+special loot. Unchecked camps have detail -1 and no predicted variant.
+Generation comes from Seed Atlas commit
+`fc2c628693bc72130d7c16a21636f50d57553ddf`, downloaded and SHA-256 verified
+by CMake unless `SEEDATLAS_ENGINE_DIR` is explicitly set.
+
 ## Accuracy boundaries
 
-- Biomes are deterministic vanilla 26.2 biome-noise results at the requested
+- Biomes are deterministic vanilla 26.3 biome-noise results at the requested
   X/Y/Z. A seed cannot reconstruct datapack, modded, or custom-dimension
   generation.
 - A checked structure result passed `isViableStructurePos`, i.e. the engine's
@@ -32,6 +41,11 @@ area, and callers can keep a coarser parent tile visible while finer work runs.
   and amethyst geodes are also marked approximate because their final block
   and terrain gates are unavailable. End City results additionally pass the
   engine's exact End surface-height check (`isViableEndCityTerrain`).
+- Abandoned Camps use Seed Atlas' rotated start-piece biome position and
+  approximate projected surface height, including its negative-coordinate
+  boundary corrections. Special-loot markers use `getVariant`, not template
+  name guesses. Camps remain marked approximate because the engine does not
+  reproduce the final vanilla surface/jigsaw/block checks.
 - End Ship markers are derived from predicted End City pieces after the biome
   and surface-height checks.
 - End Island markers use the placed-feature RNG, include the generated Y and

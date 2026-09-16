@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * Pure-Java facade for the bundled Seed Atlas MC 26.2 native generation ABI.
+ * Pure-Java facade for the bundled Seed Atlas MC 26.3 native generation ABI.
  * Instances are safe for concurrent reads; close waits for active calls.
  */
 public final class SeedAtlasNative implements AutoCloseable {

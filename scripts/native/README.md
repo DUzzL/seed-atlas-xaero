@@ -1,8 +1,10 @@
 # Native Seed Atlas builds
 
 The CMake project in `src/main/native` links the `seedatlas-engine` sources
-into a dependency-free C ABI library. Set `SEEDATLAS_ENGINE_DIR` when the
-engine is not located at the default monorepo-relative path. Build it with:
+into a C ABI library requiring only platform system libraries. CMake downloads
+Seed Atlas commit `fc2c628693bc72130d7c16a21636f50d57553ddf` and verifies its
+SHA-256. Set `SEEDATLAS_ENGINE_DIR` to use an explicit local engine checkout
+instead. Build it with:
 
 - Windows x64 (MinGW GCC or clang, not MSVC `cl`):
   `./scripts/native/build-native.ps1 -RunTests`
@@ -16,8 +18,9 @@ The scripts install the result below:
 
 Before packaging, copy every generated library into the matching directory
 below `src/main/resources/natives/`. The repository CI compiles and tests the
-native source and separately runs the ABI suite against the checked-in Linux
-resource, so a source-only fix cannot silently ship with a stale Linux binary.
+native source on all four platforms and runs Java FFM regression tests against
+both checked-in and freshly built libraries. The final CI jar uses the freshly
+built libraries from all four runners, preventing stale platform resources.
 Runtime lookup expects exactly these paths in the final jar:
 
 - `natives/windows-x86_64/seedatlas_xaero.dll`
@@ -27,3 +30,13 @@ Runtime lookup expects exactly these paths in the final jar:
 
 For local Java/FFM testing, an unpackaged build can be selected with the JVM
 property `-Dseedatlas_xaero.native.path=/absolute/path/to/the/library`.
+
+Run `bash ./gradlew build` with Java 25 to build the mod and run the bundled
+native FFM tests, or `bash ./gradlew nativeSmokeTest` for just those tests.
+The smoke test uses the actual jar's host library, including extraction and
+ABI validation. The C test suite also checks known camp boundaries, variants,
+Dappled Forest colors, Large Biomes, and the previous structure regressions.
+
+For Windows PowerShell builds select a MinGW generator/compiler, for example
+`$env:CMAKE_GENERATOR = 'MinGW Makefiles'`, with MinGW GCC on PATH. The CI uses
+MSYS2 MinGW64 with Ninja. Visual Studio's MSVC C compiler is unsupported.

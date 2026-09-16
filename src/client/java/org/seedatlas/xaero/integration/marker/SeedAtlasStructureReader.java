@@ -128,6 +128,15 @@ final class SeedAtlasStructureReader extends ElementReader<
     }
 
     @Override
+    public float getBoxScale(
+        ElementRenderLocation location, SeedAtlasStructureMarker marker,
+        SeedAtlasStructureContext context
+    ) {
+        // Xaero applies optionalScale separately to both hit and render boxes.
+        return context.iconScale;
+    }
+
+    @Override
     public boolean isInteractable(ElementRenderLocation location, SeedAtlasStructureMarker marker) {
         return location == ElementRenderLocation.WORLD_MAP;
     }

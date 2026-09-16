@@ -55,7 +55,7 @@ enum sax_world_flags {
     SAX_WORLD_LARGE_BIOMES = 1u << 0
 };
 
-/* Engine StructureType values are retained verbatim for 1..24. */
+/* Engine StructureType values are retained verbatim for 1..25. */
 enum sax_structure_type {
     SAX_DESERT_PYRAMID = 1,
     SAX_JUNGLE_TEMPLE = 2,
@@ -81,6 +81,7 @@ enum sax_structure_type {
     SAX_END_ISLAND = 22,
     SAX_TRAIL_RUINS = 23,
     SAX_TRIAL_CHAMBERS = 24,
+    SAX_ABANDONED_CAMP = 25,
 
     /* Wrapper-only marker types. */
     SAX_STRONGHOLD = 1001,
@@ -92,6 +93,12 @@ enum sax_structure_type {
     SAX_ORE_VEIN = 1007
 };
 
+/* Camp detail is -1 for unchecked candidates, else biome ID | special loot. */
+enum sax_camp_detail {
+    SAX_CAMP_BIOME_MASK = 0xff,
+    SAX_CAMP_SPECIAL_LOOT = 1u << 8
+};
+
 enum sax_result_flags {
     SAX_RESULT_BIOME_CHECKED = 1u << 0,
     SAX_RESULT_BIOME_VIABLE = 1u << 1,
@@ -100,7 +107,7 @@ enum sax_result_flags {
 };
 
 enum {
-    SAX_ABI_VERSION = 3,
+    SAX_ABI_VERSION = 4,
     SAX_CHUNK_SAMPLE_COUNT = 16 * 16,
     SAX_MAX_BIOME_AREA_SAMPLES = 4 * 1024 * 1024,
     SAX_RESULT_STRIDE = 6,
@@ -176,6 +183,7 @@ SAX_API uint32_t sax_biome_color(int32_t biome_id);
  * out_results contains SAX_RESULT_STRIDE int32 values per result:
  *   [type, block_x, block_y_or_SAX_UNKNOWN_Y, block_z, flags, detail]
  * End Island results include their generated Y and use detail for the radius.
+ * Camp detail uses sax_camp_detail; unchecked camp detail is -1.
  *
  * Returns the number written, capacity + 1 when truncated, or sax_error.
  */

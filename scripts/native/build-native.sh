@@ -81,7 +81,7 @@ if [[ "$platform" == macos-* ]]; then
     /usr/bin/codesign --verify --strict --verbose=2 "$dylib"
     if [[ "$run_tests" == "ON" ]]; then
         SAX_DYLIB="$dylib" /usr/bin/python3 -c \
-            'import ctypes, os; lib = ctypes.CDLL(os.environ["SAX_DYLIB"]); assert lib.sax_abi_version() == 3'
+            'import ctypes, os; lib = ctypes.CDLL(os.environ["SAX_DYLIB"]); assert lib.sax_abi_version() == 4'
     fi
 fi
 

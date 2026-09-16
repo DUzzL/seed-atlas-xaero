@@ -28,6 +28,7 @@ import org.seedatlas.xaero.nativeapi.BlockBox;
 import org.seedatlas.xaero.nativeapi.BlockPos;
 import org.seedatlas.xaero.nativeapi.Dimension;
 import org.seedatlas.xaero.nativeapi.ScanResult;
+import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.SpawnMode;
 import org.seedatlas.xaero.nativeapi.StructurePosition;
 import org.seedatlas.xaero.nativeapi.StructureType;
@@ -288,7 +289,7 @@ final class SeedAtlasStructureMarkerSource {
                     }
                     scanResult = session.structures(structureType, box, resultLimit, true);
                 }
-                return markersFromScan(marker, request.level, scanResult);
+                return markersFromScan(marker, request.level, scanResult, session);
             });
             if (!current.getAsBoolean() || result == null) {
                 return List.of();
@@ -300,7 +301,7 @@ final class SeedAtlasStructureMarkerSource {
     }
 
     private static List<SeedAtlasStructureMarker> markersFromScan(
-        MarkerType marker, ResourceKey<Level> dimension, ScanResult result
+        MarkerType marker, ResourceKey<Level> dimension, ScanResult result, SeedAtlasNative session
     ) {
         if (result == null || result.positions() == null) {
             return List.of();
@@ -313,7 +314,9 @@ final class SeedAtlasStructureMarkerSource {
                 position.y(),
                 position.z(),
                 dimension,
-                position.approximate()
+                position.approximate(),
+                position.campBiomeId() >= 0 ? session.biomeName(position.campBiomeId()) : null,
+                position.hasSpecialLoot()
             ));
         }
         return output;
@@ -337,7 +340,7 @@ final class SeedAtlasStructureMarkerSource {
             case ORE_VEIN, GEODE, DESERT_WELL, BURIED_TREASURE ->
                 scale >= 0.25 && radius <= 8192;
             case MINESHAFT -> scale >= 0.25 && radius <= 12288;
-            case VILLAGE, SHIPWRECK, OCEAN_RUINS, RUINED_PORTAL, TRAIL_RUINS,
+            case ABANDONED_CAMP, VILLAGE, SHIPWRECK, OCEAN_RUINS, RUINED_PORTAL, TRAIL_RUINS,
                  TRIAL_CHAMBERS, PILLAGER_OUTPOST, DESERT_PYRAMID,
                  JUNGLE_TEMPLE, SWAMP_HUT, IGLOO ->
                 scale >= 0.125 && radius <= 24576;

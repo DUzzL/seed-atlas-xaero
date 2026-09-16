@@ -1,8 +1,3 @@
-# Automatically build the project and run any configured tests for every push
-# and submitted pull request. This can help catch issues that only occur on
-# certain platforms or Java versions, and provides a first line of defence
-# against bad commits.
-
 name: build
 on: [pull_request, push]
 
@@ -10,44 +5,72 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+          - os: windows-2025
+            platform: windows-x86_64
+          - os: macos-15-intel
+            platform: macos-x86_64
+          - os: macos-15
+            platform: macos-aarch64
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: checkout repository
-        uses: actions/checkout@v6
-      - name: checkout Seed Atlas engine
-        uses: actions/checkout@v6
-        with:
-          repository: DUzzL/Seed-Atlas
-          path: seed-atlas-source
-          sparse-checkout: seedatlas-engine
-      - name: validate gradle wrapper
-        uses: gradle/actions/wrapper-validation@v6
-      - name: setup jdk
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v6
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: '25'
-          distribution: 'microsoft'
-      - name: make gradle wrapper executable
-        run: chmod +x ./gradlew
-      - name: build and test native source
-        env:
-          SEEDATLAS_ENGINE_DIR: ${{ github.workspace }}/seed-atlas-source/seedatlas-engine
-          RUN_TESTS: "ON"
-        run: bash scripts/native/build-native.sh linux-x86_64
-      - name: test checked-in Linux native resource
-        run: |
-          mkdir -p build/native-bundled-test
-          cc -std=c11 -UNDEBUG -Isrc/main/native \
-            src/main/native/tests/seedatlas_xaero_test.c \
-            src/main/resources/natives/linux-x86_64/seedatlas_xaero.so \
-            -Wl,-rpath,"$GITHUB_WORKSPACE/src/main/resources/natives/linux-x86_64" \
-            -o build/native-bundled-test/seedatlas_xaero_test
-          build/native-bundled-test/seedatlas_xaero_test
-      - name: build
-        run: ./gradlew build
-      - name: capture build artifacts
-        uses: actions/upload-artifact@v7
+          distribution: 'temurin'
+      - name: Set up MinGW (C11 VLA support)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
         with:
-          name: Artifacts
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+      - name: Build and test native source (Unix)
+        if: runner.os != 'Windows'
+        run: bash scripts/native/build-native.sh ${{ matrix.platform }}
+      - name: Build and test native source (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: bash scripts/native/build-native.sh windows-x86_64
+      - name: Test checked-in library through Java FFM
+        shell: bash
+        run: bash ./gradlew nativeSmokeTest
+      - name: Test freshly built library through Java FFM
+        shell: bash
+        run: |
+          cp build/generated/native-resources/natives/${{ matrix.platform }}/seedatlas_xaero.* src/main/resources/natives/${{ matrix.platform }}/
+          bash ./gradlew nativeSmokeTest --rerun-tasks
+      - uses: actions/upload-artifact@v7
+        with:
+          name: natives-${{ matrix.platform }}
+          path: build/generated/native-resources/natives/
+
+  build:
+    needs: native
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: natives-*
+          merge-multiple: true
+          path: src/main/resources/natives/
+      - run: bash ./gradlew build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: seedatlas-xaero-26.3
           path: build/libs/

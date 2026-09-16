@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
  * with the native/integration layer.</p>
  */
 public enum MarkerType {
+	ABANDONED_CAMP("camp", false),
 	ANCIENT_CITY("ancient_city", false),
 	BASTION("bastion", false),
 	TRIAL_CHAMBERS("chambers", false),
