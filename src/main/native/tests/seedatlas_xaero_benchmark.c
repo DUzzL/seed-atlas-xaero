@@ -4,13 +4,28 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 static double now_milliseconds(void)
 {
+#ifdef _WIN32
+    /* MinGW's legacy MSVCRT target does not provide C11 timespec_get. */
+    LARGE_INTEGER counter, frequency;
+    if (!QueryPerformanceFrequency(&frequency) ||
+        !QueryPerformanceCounter(&counter)) {
+        fputs("Could not read the performance counter\n", stderr);
+        exit(EXIT_FAILURE);
+    }
+    return (double) counter.QuadPart * 1000.0 / (double) frequency.QuadPart;
+#else
     struct timespec now;
     timespec_get(&now, TIME_UTC);
     return now.tv_sec * 1000.0 + now.tv_nsec / 1000000.0;
+#endif
 }
 
 static uint64_t checksum(const uint32_t *values, int count)
