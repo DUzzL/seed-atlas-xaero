@@ -1,11 +1,14 @@
 package org.seedatlas.xaero.mixin;
 
+import com.llamalad7.mixinextras.sugar.Local;
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
+import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -32,6 +35,26 @@ abstract class GuiMapMixin {
     private Button seedAtlas$settingsButton;
     @Unique
     private long seedAtlas$displayedRevision = Long.MIN_VALUE;
+
+    // Draw before Xaero reserves both renderers in its shared provider.
+    @Inject(method = "extractRenderState", at = @At(
+        value = "INVOKE",
+        target = "Lxaero/map/MapProcessor;getMultiTextureRenderTypeRenderers()Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;"
+    ))
+    private void seedAtlas$renderBiomeBackground(
+        CallbackInfo ci,
+        @Local(name = "matrixStack") PoseStack pose,
+        @Local(name = "flooredCameraX") int flooredCameraX,
+        @Local(name = "flooredCameraZ") int flooredCameraZ
+    ) {
+        GuiMap map = (GuiMap)(Object)this;
+        var processor = map.getMapProcessor();
+        SeedAtlasBiomeOverlayRenderer.INSTANCE.renderBackground(
+            pose, processor.getMapWorld().getCurrentDimension().getDimId(),
+            this.cameraX, this.cameraZ, this.scale, flooredCameraX, flooredCameraZ,
+            processor.getMultiTextureRenderTypeRenderers()
+        );
+    }
 
     @Inject(method = "init", at = @At("RETURN"))
     private void seedAtlas$addLayerControls(CallbackInfo ci) {

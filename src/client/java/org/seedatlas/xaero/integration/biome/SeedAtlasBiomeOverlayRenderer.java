@@ -45,7 +45,7 @@ import xaero.map.graphics.renderer.multitexture.MultiTextureRenderTypeRenderer;
 import xaero.map.graphics.renderer.multitexture.MultiTextureRenderTypeRendererProvider;
 
 /**
- * Adaptive viewport raster rendered directly above Xaero's map.
+ * Adaptive viewport raster rendered underneath Xaero's explored terrain.
  *
  * <p>The old implementation asked Xaero's highlighter for millions of leaf
  * chunks and repeatedly rebuilt partially complete 512-block regions. This
@@ -377,6 +377,60 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         return new BiomeSample(id, name, color);
     }
 
+    /**
+     * Called inside Xaero's terrain framebuffer after its clear and before any
+     * terrain is drawn. Its map shader discards unknown pixels, so only those
+     * pixels retain this seed background; explored terrain keeps its own colors.
+     * The supplied pose already includes Xaero's FBO zoom and fractional offset.
+     */
+    public void renderBackground(
+        PoseStack pose, ResourceKey<Level> dimension,
+        double cameraX, double cameraZ, double scale,
+        int flooredCameraX, int flooredCameraZ,
+        MultiTextureRenderTypeRendererProvider rendererProvider
+    ) {
+        if (!this.mapActive || SeedAtlasXaeroIntegration.isHeavyWorkPaused()
+            || !SeedAtlasXaeroIntegration.isLayerActive()) {
+            this.context.slices = List.of();
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        observeView(dimension, cameraX, cameraZ, scale,
+            guiWidth(minecraft), guiHeight(minecraft));
+        drainUploads();
+        ViewRequest view = this.currentView;
+        this.context.slices = view == null ? List.of() : buildSlices(view);
+        trimTextureCache(protectedTileKeys(this.context.slices));
+
+        MultiTextureRenderTypeRenderer renderer =
+            rendererProvider.getRenderer(CustomRenderTypes.GUI_NEAREST);
+        Matrix4f matrix = pose.last().pose();
+        float alpha = SeedAtlasClientState.config().opacityFraction();
+        for (OverlaySlice slice : this.context.slices) {
+            float left = (float)(slice.minX - flooredCameraX);
+            float right = (float)(slice.maxX - flooredCameraX);
+            float top = (float)(slice.minZ - flooredCameraZ);
+            float bottom = (float)(slice.maxZ - flooredCameraZ);
+            float textureSize = slice.source.key.textureSize;
+            float u0 = slice.u0 / textureSize;
+            float u1 = slice.u1 / textureSize;
+            float v0 = slice.v0 / textureSize;
+            float v1 = slice.v1 / textureSize;
+            BufferBuilder buffer = renderer.begin(slice.source.texture.getTextureView());
+            // Terrain is at Z=0. Keep this background behind its depth plane.
+            buffer.addVertex(matrix, left, bottom, -1.0F)
+                .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u0, v1);
+            buffer.addVertex(matrix, right, bottom, -1.0F)
+                .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u1, v1);
+            buffer.addVertex(matrix, right, top, -1.0F)
+                .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u1, v0);
+            buffer.addVertex(matrix, left, top, -1.0F)
+                .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u0, v0);
+        }
+        // Flush while the terrain framebuffer and its projection are active.
+        rendererProvider.draw(renderer);
+    }
+
     @Override
     public void preRender(
         ElementRenderInfo renderInfo,
@@ -386,35 +440,17 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     ) {
         if (!this.mapActive || SeedAtlasXaeroIntegration.isHeavyWorkPaused()
             || !SeedAtlasXaeroIntegration.isLayerActive()) {
-            this.context.slices = List.of();
-            this.context.renderer = null;
+            this.context.dimension = null;
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
-        int viewportWidth = guiWidth(minecraft);
-        int viewportHeight = guiHeight(minecraft);
-        observeView(
-            renderInfo.mapDimension,
-            renderInfo.renderPos.x,
-            renderInfo.renderPos.z,
-            renderInfo.scale,
-            viewportWidth,
-            viewportHeight
-        );
-        drainUploads();
-
-        ViewRequest view = this.currentView;
         this.context.dimension = renderInfo.mapDimension;
         this.context.cameraX = renderInfo.renderPos.x;
         this.context.cameraZ = renderInfo.renderPos.z;
         this.context.mouseX = renderInfo.mouseX;
         this.context.mouseZ = renderInfo.mouseZ;
-        this.context.scale = renderInfo.scale;
-        this.context.viewportWidth = viewportWidth;
-        this.context.viewportHeight = viewportHeight;
-        this.context.renderer = rendererProvider.getRenderer(CustomRenderTypes.GUI_NEAREST);
-        this.context.slices = view == null ? List.of() : buildSlices(view);
-        trimTextureCache(protectedTileKeys(this.context.slices));
+        this.context.viewportWidth = guiWidth(minecraft);
+        this.context.viewportHeight = guiHeight(minecraft);
     }
 
     @Override
@@ -424,9 +460,6 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         MultiTextureRenderTypeRendererProvider rendererProvider,
         boolean shadow
     ) {
-        if (this.context.renderer != null) {
-            rendererProvider.draw(this.context.renderer);
-        }
     }
 
     @Override
@@ -456,32 +489,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         XaeroBufferProvider xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider
     ) {
-        if (!probe.visual || this.context.renderer == null) {
-            return false;
-        }
-        PoseStack pose = graphics.pose();
-        Matrix4f matrix = pose.last().pose();
-        float alpha = SeedAtlasClientState.config().opacityFraction();
-        for (OverlaySlice slice : this.context.slices) {
-            float left = (float)((slice.minX - this.context.cameraX) * this.context.scale);
-            float right = (float)((slice.maxX - this.context.cameraX) * this.context.scale);
-            float top = (float)((slice.minZ - this.context.cameraZ) * this.context.scale);
-            float bottom = (float)((slice.maxZ - this.context.cameraZ) * this.context.scale);
-            float textureSize = slice.source.key.textureSize;
-            float u0 = slice.u0 / textureSize;
-            float u1 = slice.u1 / textureSize;
-            float v0 = slice.v0 / textureSize;
-            float v1 = slice.v1 / textureSize;
-            BufferBuilder buffer = this.context.renderer.begin(slice.source.texture.getTextureView());
-            buffer.addVertex(matrix, left, bottom, (float)optionalDepth)
-                .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u0, v1);
-            buffer.addVertex(matrix, right, bottom, (float)optionalDepth)
-                .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u1, v1);
-            buffer.addVertex(matrix, right, top, (float)optionalDepth)
-                .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u1, v0);
-            buffer.addVertex(matrix, left, top, (float)optionalDepth)
-                .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u0, v0);
-        }
+        // This element only supplies the biome tooltip. The raster has already
+        // been rendered beneath terrain by renderBackground, never above it.
         return false;
     }
 
@@ -494,14 +503,13 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
     @Override
     public boolean shouldRenderHovered(boolean pre) {
-        // The hover probe is detected during the normal pass. Drawing it again
-        // would alpha-blend the full biome raster a second time.
+        // The tooltip probe has no visual hover pass.
         return false;
     }
 
     @Override
     public int getOrder() {
-        // Claims, structures, waypoints and players remain above the biome plane.
+        // Let structure and waypoint hover targets take priority over this probe.
         return 100;
     }
 
@@ -1191,20 +1199,12 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         private double cameraZ;
         private double mouseX;
         private double mouseZ;
-        private double scale = 1.0;
         private int viewportWidth = 1;
         private int viewportHeight = 1;
-        private MultiTextureRenderTypeRenderer renderer;
     }
 
     static final class OverlayProbe {
-        private static final OverlayProbe VISUAL = new OverlayProbe(true);
-        private static final OverlayProbe HOVER = new OverlayProbe(false);
-        private final boolean visual;
-
-        private OverlayProbe(boolean visual) {
-            this.visual = visual;
-        }
+        private static final OverlayProbe HOVER = new OverlayProbe();
     }
 
     private static final class ProbeProvider
@@ -1218,17 +1218,18 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
         @Override
         public boolean hasNext(ElementRenderLocation location, OverlayContext context) {
-            return this.index < 2;
+            return this.index < 1;
         }
 
         @Override
         public OverlayProbe getNext(ElementRenderLocation location, OverlayContext context) {
-            return this.index++ == 0 ? OverlayProbe.VISUAL : OverlayProbe.HOVER;
+            this.index++;
+            return OverlayProbe.HOVER;
         }
 
         @Override
         public void end(ElementRenderLocation location, OverlayContext context) {
-            this.index = 2;
+            this.index = 1;
         }
     }
 
@@ -1322,7 +1323,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
         @Override
         public boolean isInteractable(ElementRenderLocation location, OverlayProbe probe) {
-            return !probe.visual && location == ElementRenderLocation.WORLD_MAP;
+            return location == ElementRenderLocation.WORLD_MAP;
         }
 
         @Override
