@@ -1,16 +1,16 @@
 # Seed Atlas for Xaero's World Map
 
-A client-side Fabric extension that renders deterministic Seed Atlas
+![Replace this with a description](https://cdn.modrinth.com/data/cached_images/2253717c2e6ea430744b8fd6078c749cc40fe906.png)
+
+A client-side Fabric mod that renders [Seed Atlas](https://github.com/DUzzL/Seed-Atlas)
 biomes and structure markers in the fullscreen Xaero's World Map.
 
 ## Requirements
 
 - Fabric API
-- Xaero's World Map for Fabric
+- Xaero's World Map (specific version depending on release)
 
 
-The server does not need this mod. On multiplayer servers the world seed stays
-on the client and is never sent to the server.
 
 ## Commands
 
@@ -22,7 +22,7 @@ on the client and is never sent to the server.
 Singleplayer seeds are detected automatically. Multiplayer seeds are stored
 per Xaero map/server context. Only vanilla normal and Large Biomes world
 generation are supported; custom worldgen datapacks and modded dimensions
-cannot be reconstructed from the seed alone.
+are currently not supported.
 
 
 Not affiliated with Xaero
