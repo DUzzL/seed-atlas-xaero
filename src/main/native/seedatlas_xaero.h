@@ -107,7 +107,7 @@ enum sax_result_flags {
 };
 
 enum {
-    SAX_ABI_VERSION = 4,
+    SAX_ABI_VERSION = 5,
     SAX_CHUNK_SAMPLE_COUNT = 16 * 16,
     SAX_MAX_BIOME_AREA_SAMPLES = 4 * 1024 * 1024,
     SAX_RESULT_STRIDE = 6,

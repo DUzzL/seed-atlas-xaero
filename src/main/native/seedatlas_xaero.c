@@ -76,7 +76,7 @@ static int setup_dimension_generator(const sax_context *context,
 {
     if (!context_valid(context) || !generator || !dimension_valid(dimension))
         return SAX_ERR_ARGUMENT;
-    setupGenerator(generator, MC_26_3, context->generator_flags);
+    setupGenerator(generator, MC_26_2, context->generator_flags);
     applySeed(generator, dimension, context->seed);
     return SAX_OK;
 }
@@ -101,7 +101,7 @@ static int sample_step_valid(int32_t sample_step)
 
 static uint32_t color_from_table(unsigned char colors[256][3], int id)
 {
-    if (id < 0 || id >= 256 || !biomeExists(MC_26_3, id))
+    if (id < 0 || id >= 256 || !biomeExists(MC_26_2, id))
         return 0;
     return UINT32_C(0xff000000) | ((uint32_t) colors[id][0] << 16) |
            ((uint32_t) colors[id][1] << 8) | (uint32_t) colors[id][2];
@@ -168,7 +168,7 @@ SAX_API uint32_t sax_capabilities(void)
 
 SAX_API int32_t sax_engine_version(char *out, int32_t capacity)
 {
-    return copy_string("seedatlas-engine MC 26.3 / ABI 4", out, capacity);
+    return copy_string("seedatlas-engine MC 26.2 / ABI 5", out, capacity);
 }
 
 SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags)
@@ -185,15 +185,15 @@ SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags)
     context->seed = (uint64_t) seed;
     context->generator_flags =
         (world_flags & SAX_WORLD_LARGE_BIOMES) ? LARGE_BIOMES : 0;
-    setupGenerator(&context->biome_generators[0], MC_26_3,
+    setupGenerator(&context->biome_generators[0], MC_26_2,
                    context->generator_flags);
     applySeed(&context->biome_generators[0], SAX_DIM_OVERWORLD,
               context->seed);
-    setupGenerator(&context->biome_generators[1], MC_26_3,
+    setupGenerator(&context->biome_generators[1], MC_26_2,
                    context->generator_flags);
     applySeed(&context->biome_generators[1], SAX_DIM_NETHER,
               context->seed);
-    setupGenerator(&context->biome_generators[2], MC_26_3,
+    setupGenerator(&context->biome_generators[2], MC_26_2,
                    context->generator_flags);
     applySeed(&context->biome_generators[2], SAX_DIM_END,
               context->seed);
@@ -488,9 +488,9 @@ SAX_API int32_t sax_biome_area_sampled(
 
 SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity)
 {
-    if (biome_id < 0 || biome_id >= 256)
+    if (biome_id < 0 || biome_id >= 256 || !biomeExists(MC_26_2, biome_id))
         return 0;
-    return copy_string(biome2str(MC_26_3, biome_id), out, capacity);
+    return copy_string(biome2str(MC_26_2, biome_id), out, capacity);
 }
 
 SAX_API uint32_t sax_biome_color(int32_t biome_id)
@@ -731,7 +731,7 @@ static int32_t scan_end_islands(const sax_context *context,
                consumes the following RNG values in the wrong order. The
                dedicated helper reproduces Vanilla's one-or-two island draw,
                in-chunk X/Z, Y, and radius. */
-            island_count = getEndIslands(islands, MC_26_3, context->seed,
+            island_count = getEndIslands(islands, MC_26_2, context->seed,
                                          chunk_x, chunk_z);
             for (i = 0; i < island_count; ++i) {
                 Pos position = {islands[i].x, islands[i].z};
@@ -782,7 +782,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
         output_type = SAX_END_SHIP;
     }
     if (engine_type <= Feature || engine_type >= FEATURE_NUM ||
-        !getStructureConfig(engine_type, MC_26_3, &config))
+        !getStructureConfig(engine_type, MC_26_2, &config))
         return SAX_ERR_UNSUPPORTED;
 
     reg_x0 = floor_div(min_x, (int32_t) config.regionSize * 16);
@@ -807,7 +807,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
     if (structure_type == SAX_END_GATEWAY) {
         Pos fixed[20];
         int i;
-        getFixedEndGateways(MC_26_3, context->seed, fixed);
+        getFixedEndGateways(MC_26_2, context->seed, fixed);
         for (i = 0; i < 20; ++i) {
             if (!in_box(fixed[i], min_x, min_z, max_x, max_z))
                 continue;
@@ -823,7 +823,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
             Pos position;
             int flags = 0;
             int detail = engine_type == Abandoned_Camp ? -1 : 0;
-            if (!getStructurePos(engine_type, MC_26_3, context->seed,
+            if (!getStructurePos(engine_type, MC_26_2, context->seed,
                                  reg_x, reg_z, &position) ||
                 !in_box(position, min_x, min_z, max_x, max_z))
                 continue;
@@ -835,7 +835,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
                 if (engine_type == Abandoned_Camp) {
                     StructureVariant variant;
                     detail = biome & SAX_CAMP_BIOME_MASK;
-                    if (getVariant(&variant, engine_type, MC_26_3, context->seed,
+                    if (getVariant(&variant, engine_type, MC_26_2, context->seed,
                                    position.x, position.z, biome) && variant.special)
                         detail |= SAX_CAMP_SPECIAL_LOOT;
                 }
@@ -850,7 +850,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
             if (output_type == SAX_END_SHIP &&
                 !end_city_has_ship(context->seed, position))
                 continue;
-            /* Cubiomes has no exact 26.3 Overworld WORLD_SURFACE_WG/block
+            /* Cubiomes has no exact 26.2 Overworld WORLD_SURFACE_WG/block
                sampler. Keep these potential starts visible instead of using
                its heuristic terrain filter (which can hide real structures),
                but expose the uncertainty to the map tooltip. */
@@ -886,7 +886,7 @@ SAX_API int32_t sax_scan_strongholds(const sax_context *context,
             return result;
         generator_pointer = &generator;
     }
-    initFirstStronghold(&iterator, MC_26_3, context->seed);
+    initFirstStronghold(&iterator, MC_26_2, context->seed);
     do {
         int flags;
         remaining = nextStronghold(&iterator, generator_pointer);

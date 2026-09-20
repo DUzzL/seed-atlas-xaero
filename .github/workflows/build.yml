@@ -72,5 +72,5 @@ jobs:
       - run: bash ./gradlew build
       - uses: actions/upload-artifact@v7
         with:
-          name: seedatlas-xaero-26.3
+          name: seedatlas-xaero-26.2
           path: build/libs/

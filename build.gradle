@@ -90,7 +90,7 @@ publishing {
 	}
 }
 
-// Exercise the actual bundled library through Java FFM, including 26.3
+// Exercise the actual bundled library through Java FFM, including 26.2
 // generation fixtures and concurrent biome calls, on each host platform.
 def nativeTestClasses = layout.buildDirectory.dir('classes/nativeSmokeTest')
 tasks.register('compileNativeSmokeTest', JavaCompile) {

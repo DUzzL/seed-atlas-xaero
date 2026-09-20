@@ -13,34 +13,22 @@ import org.seedatlas.xaero.nativeapi.Dimension;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
 
-/** Manual Java 25 FFM smoke/concurrency test for native ABI 4. */
+/** Manual Java 25 FFM smoke/concurrency test for native ABI 5. */
 public final class BiomeAreaFfmTest {
     public static void main(String[] args) throws Exception {
         assert SeedAtlasNative.status().available();
-        assert SeedAtlasNative.engineVersion().contains("ABI 4");
-        assert SeedAtlasNative.engineVersion().contains("MC 26.3");
-        try (SeedAtlasNative camp = SeedAtlasNative.open(14L, WorldType.NORMAL)) {
-            var special = camp.structures(StructureType.ABANDONED_CAMP,
-                new BlockBox(-832, -2128, -832, -2128), 8, true).positions();
-            assert special.size() == 1;
-            assert special.getFirst().campBiomeId() == 30;
-            assert special.getFirst().hasSpecialLoot();
-        }
+        assert SeedAtlasNative.engineVersion().contains("ABI 5");
+        assert SeedAtlasNative.engineVersion().contains("MC 26.2");
         try (SeedAtlasNative atlas = SeedAtlasNative.open(8371904829L, WorldType.NORMAL)) {
-            var dappled = atlas.biomeAt(Dimension.OVERWORLD, -1184, 100, 1248);
-            assert dappled.id() == 188;
-            assert dappled.name().equals("minecraft:dappled_forest");
-            assert dappled.argb() == 0xffdf6827;
-            var camps = atlas.structures(StructureType.ABANDONED_CAMP,
-                new BlockBox(-512, 416, -512, 416), 8, true).positions();
-            assert camps.size() == 1;
-            assert camps.getFirst().campBiomeId() == 4;
-            assert !camps.getFirst().hasSpecialLoot();
-            var unchecked = atlas.structures(StructureType.ABANDONED_CAMP,
-                new BlockBox(288, 32, 288, 32), 8, false).positions();
-            assert unchecked.size() == 1;
-            assert unchecked.getFirst().campBiomeId() == -1;
-            assert !unchecked.getFirst().hasSpecialLoot();
+            var plains = atlas.biomeAt(Dimension.OVERWORLD, -1184, 100, 1248);
+            assert plains.id() == 1;
+            assert plains.name().equals("minecraft:plains");
+            assert atlas.biomeName(188).equals("minecraft:unknown_188");
+            assert atlas.biomeColor(188) == 0;
+            assert atlas.biomeName(187).equals("minecraft:sulfur_caves");
+            for (int id = 188; id < 256; id++) {
+                assert atlas.biomeName(id).contains("unknown_") : "Newer biome in 26.2 picker: " + id;
+            }
             BiomeRegion exact = atlas.biomeArea(
                 Dimension.OVERWORLD, -517, 39, 255, 1, 96, 80);
             for (int z = 0; z < 80; z += 7) {
@@ -121,6 +109,6 @@ public final class BiomeAreaFfmTest {
                 }
             }
         }
-        System.out.println("seedatlas_xaero Java FFM ABI 4 tests passed");
+        System.out.println("seedatlas_xaero Java FFM ABI 5 tests passed");
     }
 }

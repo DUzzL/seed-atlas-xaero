@@ -29,7 +29,7 @@ public enum StructureType {
     END_ISLAND(22, Dimension.END, true),
     TRAIL_RUINS(23, Dimension.OVERWORLD, true),
     TRIAL_CHAMBERS(24, Dimension.OVERWORLD, true),
-    ABANDONED_CAMP(25, Dimension.OVERWORLD, true),
+    ABANDONED_CAMP(25, Dimension.OVERWORLD, false),
 
     STRONGHOLD(1001, Dimension.OVERWORLD, false),
     SPAWN(1002, Dimension.OVERWORLD, false),

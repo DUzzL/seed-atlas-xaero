@@ -16,6 +16,12 @@ public final class StructureProgressTest {
                  "seeds":{"server-a":{"input":"123","value":123,"label":"A"}}}
                 """);
             var config = SeedAtlasConfigIO.load(file);
+            check(MarkerType.all().stream().noneMatch(type -> type == MarkerType.ABANDONED_CAMP),
+                "26.3 camps must not appear in the 26.2 structure selector");
+            check(MarkerType.byId("camp").isEmpty(), "Imported camp settings must not re-enable camps");
+            check(!config.addHighlightedBiome(188) && !config.toggleHighlightedBiome(188),
+                "Dappled Forest must not remain selected in a 26.2 config");
+            check(config.highlightedBiomeCount() == 0, "No hidden newer-biome selection");
             check(!config.hideCompletedStructures(), "Old configs must show completed structures");
             var key = new StructureKey("server-a", 123, false, "minecraft:overworld", "village", -128, 256);
             check(config.setCompleted(key, true), "First completion");

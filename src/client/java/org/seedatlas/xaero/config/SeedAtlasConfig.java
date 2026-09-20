@@ -240,15 +240,16 @@ public final class SeedAtlasConfig {
 		return true;
 	}
 
+	// Sulfur Caves (187) is the last biome in 26.2; discard newer selections on import.
 	synchronized boolean addHighlightedBiome(final int biomeId) {
-		if (biomeId < 0 || biomeId > 255) {
+		if (biomeId < 0 || biomeId > 187) {
 			return false;
 		}
 		return this.highlightedBiomes.add(biomeId);
 	}
 
 	synchronized boolean toggleHighlightedBiome(final int biomeId) {
-		if (biomeId < 0 || biomeId > 255) {
+		if (biomeId < 0 || biomeId > 187) {
 			return false;
 		}
 		if (!this.highlightedBiomes.remove(biomeId)) {

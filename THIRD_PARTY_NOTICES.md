@@ -4,7 +4,7 @@
 
 The generation engine and structure icons are sourced from
 https://github.com/DUzzL/Seed-Atlas at commit
-fc2c628693bc72130d7c16a21636f50d57553ddf. Seed Atlas derives from
+30f024b724aca816b7ccd4ada640ccb22125ff60. Seed Atlas derives from
 https://github.com/Cubitect/cubiomes-viewer (GPLv3).
 
 The Abandoned Camp markers use their own flat pixel-art tents: the normal camp

@@ -7,8 +7,14 @@ biomes and structure markers in the fullscreen Xaero's World Map.
 
 ## Requirements
 
-- Fabric API
-- Xaero's World Map (specific version depending on release)
+- Minecraft **26.2**, Fabric Loader, Java 25
+- Fabric API for 26.2
+- Xaero's World Map **1.46.1 for Fabric 26.2**
+
+This backport uses Seed Atlas engine commit
+`30f024b724aca816b7ccd4ada640ccb22125ff60` with `MC_26_2` generation.
+26.3-only Abandoned Camps and Dappled Forest are excluded from generation
+and from the structure/biome selectors.
 
 
 

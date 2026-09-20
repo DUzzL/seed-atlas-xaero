@@ -2,7 +2,7 @@
 
 The CMake project in `src/main/native` links the `seedatlas-engine` sources
 into a C ABI library requiring only platform system libraries. CMake downloads
-Seed Atlas commit `fc2c628693bc72130d7c16a21636f50d57553ddf` and verifies its
+Seed Atlas commit `30f024b724aca816b7ccd4ada640ccb22125ff60` and verifies its
 SHA-256. Set `SEEDATLAS_ENGINE_DIR` to use an explicit local engine checkout
 instead. Build it with:
 
@@ -34,8 +34,8 @@ property `-Dseedatlas_xaero.native.path=/absolute/path/to/the/library`.
 Run `bash ./gradlew build` with Java 25 to build the mod and run the bundled
 native FFM tests, or `bash ./gradlew nativeSmokeTest` for just those tests.
 The smoke test uses the actual jar's host library, including extraction and
-ABI validation. The C test suite also checks known camp boundaries, variants,
-Dappled Forest colors, Large Biomes, and the previous structure regressions.
+ABI validation. The C test suite also checks 26.2 Plains instead of Dappled
+Forest, rejection of camps, Large Biomes, and the existing structure regressions.
 
 For Windows PowerShell builds select a MinGW generator/compiler, for example
 `$env:CMAKE_GENERATOR = 'MinGW Makefiles'`, with MinGW GCC on PATH. The CI uses

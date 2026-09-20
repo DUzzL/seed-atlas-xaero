@@ -9,8 +9,8 @@ set(SEEDATLAS_ENGINE_DIR "" CACHE PATH "Optional local Seed Atlas engine checkou
 if(NOT SEEDATLAS_ENGINE_DIR)
     include(FetchContent)
     FetchContent_Declare(seedatlas_source
-        URL https://codeload.github.com/DUzzL/Seed-Atlas/tar.gz/fc2c628693bc72130d7c16a21636f50d57553ddf
-        URL_HASH SHA256=9b90ec564b23ee53053147068db82e0361cc79c74cb8632350a68a29acd64d10
+        URL https://codeload.github.com/DUzzL/Seed-Atlas/tar.gz/30f024b724aca816b7ccd4ada640ccb22125ff60
+        URL_HASH SHA256=039022be0f05d018b4c58193ca37f181efe9e5bb660a60177f454d0e6a30a750
         SOURCE_SUBDIR seedatlas-no-cmake-subdirectory
     )
     FetchContent_MakeAvailable(seedatlas_source)

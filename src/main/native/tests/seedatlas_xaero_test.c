@@ -28,7 +28,7 @@ int main(void)
     assert((sax_capabilities() & SAX_CAP_BIOME_SAMPLING) != 0);
     assert((sax_capabilities() & SAX_CAP_BIOME_AREAS) != 0);
     assert(sax_engine_version(version, sizeof(version)) > 1);
-    assert(strstr(version, "26.3") != NULL);
+    assert(strstr(version, "26.2") != NULL);
 
     context = sax_create(INT64_C(8371904829), SAX_WORLD_NORMAL);
     assert(context != NULL);
@@ -164,64 +164,24 @@ int main(void)
         }
     }
 
-    /* 26.3 fixtures from the pinned Seed Atlas engine regression suite. */
+    /* 26.2 must not expose 26.3's camp structures or Dappled Forest. */
     assert(sax_biome_at(context, SAX_DIM_OVERWORLD,
                         -1184, 100, 1248, &biome) == SAX_OK);
-    assert(biome == 188); /* Dappled Forest */
-    assert(sax_biome_name(biome, name, sizeof(name)) > 1);
-    assert(strcmp(name, "dappled_forest") == 0);
-    assert(sax_biome_color(biome) == UINT32_C(0xffdf6827));
-    assert(sax_biome_chunk(context, SAX_DIM_OVERWORLD,
-                           -74, 78, 100, ids, colors) == SAX_OK);
-    assert(ids[0] == 188 && colors[0] == UINT32_C(0xffdf6827));
-    assert(sax_biome_area_sampled(context, SAX_DIM_OVERWORLD,
-               -1184, 1248, 100, 1, 1, 1, ids, colors, 1) == SAX_OK);
-    assert(ids[0] == 188 && colors[0] == UINT32_C(0xffdf6827));
-
-    count = sax_scan_structures(context, SAX_ABANDONED_CAMP,
-                                288, 32, 288, 32, 0, results, 64);
-    assert(count == 1 && results[5] == -1); /* unchecked: variant unknown */
-    count = sax_scan_structures(context, SAX_ABANDONED_CAMP,
-                                -512, 416, -512, 416, 1, results, 64);
-    assert(count == 1 && results[0] == SAX_ABANDONED_CAMP);
-    assert(results[1] == -512 && results[3] == 416);
-    assert(results[5] == 4); /* forest, regular loot */
-    assert((results[4] & SAX_RESULT_APPROXIMATE) != 0);
-    assert((results[4] & SAX_RESULT_BIOME_VIABLE) != 0);
-    count = sax_scan_structures(context, SAX_ABANDONED_CAMP,
-                                10704, -23600, 10704, -23600, 0, results, 64);
-    assert(count == 1);
-    count = sax_scan_structures(context, SAX_ABANDONED_CAMP,
-                                10704, -23600, 10704, -23600, 1, results, 64);
-    assert(count == 0); /* biome boundary: reject wrong chunk-centre sample */
+    assert(biome == 1); /* Plains, relabelled as Dappled Forest only in 26.3. */
+    assert(sax_biome_name(188, name, sizeof(name)) == 0);
+    assert(sax_biome_color(188) == 0);
     assert(sax_scan_structures(context, SAX_ABANDONED_CAMP,
-                -512, 416, -512, 416, 1, NULL, 0) == 1); /* truncated */
-    {
-        sax_context *camp = sax_create(14, SAX_WORLD_NORMAL);
-        assert(camp != NULL);
-        count = sax_scan_structures(camp, SAX_ABANDONED_CAMP,
-                                    -832, -2128, -832, -2128, 1, results, 64);
-        assert(count == 1);
-        assert((results[5] & SAX_CAMP_BIOME_MASK) == 30); /* snowy taiga */
-        assert((results[5] & SAX_CAMP_SPECIAL_LOOT) != 0);
-        sax_destroy(camp);
-    }
+                -4096, -4096, 4096, 4096, 1, results, 64) == SAX_ERR_UNSUPPORTED);
     {
         sax_context *large = sax_create(8371904829LL, SAX_WORLD_LARGE_BIOMES);
         assert(large != NULL);
         assert(sax_biome_area_sampled(large, SAX_DIM_OVERWORLD,
                    -4096, 2048, 100, 16, 16, 16, ids, colors, 256) == SAX_OK);
-        count = sax_scan_structures(large, SAX_ABANDONED_CAMP,
-                                    -4096, -4096, 4096, 4096, 1, results, 64);
-        assert(count > 0);
-        for (i = 0; i < count && i < 64; ++i) {
-            assert(results[i * SAX_RESULT_STRIDE] == SAX_ABANDONED_CAMP);
-            assert(results[i * SAX_RESULT_STRIDE + 5] >= 0);
-        }
+        for (i = 0; i < 256; ++i) assert(ids[i] != 188);
         sax_destroy(large);
     }
 
-    /* Known 26.3 generation attempt from seedatlas-engine tests_versions.c. */
+    /* Known 26.2 generation attempt from seedatlas-engine tests_versions.c. */
     count = sax_scan_structures(context, SAX_RUINED_PORTAL,
                                 272, 48, 272, 48, 0, results, 64);
     assert(count == 1);
