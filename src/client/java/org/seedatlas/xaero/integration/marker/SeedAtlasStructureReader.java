@@ -1,6 +1,12 @@
 package org.seedatlas.xaero.integration.marker;
 
+import java.util.ArrayList;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import org.seedatlas.xaero.config.SeedAtlasClientState;
+import xaero.map.gui.IRightClickableElement;
+import xaero.map.gui.dropdown.rightclick.RightClickOption;
 import xaero.lib.client.gui.widget.Tooltip;
 import xaero.map.element.render.ElementReader;
 import xaero.map.element.render.ElementRenderLocation;
@@ -12,7 +18,8 @@ final class SeedAtlasStructureReader extends ElementReader<
 > {
     @Override
     public boolean isHidden(SeedAtlasStructureMarker marker, SeedAtlasStructureContext context) {
-        return context.dimension == null || !context.dimension.equals(marker.dimension());
+        return context.dimension == null || !context.dimension.equals(marker.dimension())
+            || (SeedAtlasClientState.config().hideCompletedStructures() && SeedAtlasStructureState.isCompleted(marker));
     }
 
     @Override
@@ -31,7 +38,8 @@ final class SeedAtlasStructureReader extends ElementReader<
 
     @Override
     public boolean hasYCoordinate() {
-        return true;
+        // Show horizontal map distance: many predicted structures have unknown Y.
+        return false;
     }
 
     @Override
@@ -142,9 +150,51 @@ final class SeedAtlasStructureReader extends ElementReader<
     }
 
     @Override
+    public boolean isRightClickValid(SeedAtlasStructureMarker marker) {
+        return SeedAtlasStructureState.key(marker) != null;
+    }
+
+    @Override
+    public ArrayList<RightClickOption> getRightClickOptions(SeedAtlasStructureMarker marker, IRightClickableElement target) {
+        var options = new ArrayList<RightClickOption>();
+        options.add(new RightClickOption("", options.size(), target) {
+            @Override
+            public Component getDisplayName() {
+                return Component.literal(marker.displayName()).withStyle(net.minecraft.ChatFormatting.GRAY);
+            }
+
+            @Override
+            public void onAction(Screen screen) { }
+        }.setActive(false));
+        var key = SeedAtlasStructureState.key(marker);
+        boolean completed = SeedAtlasClientState.config().isCompleted(key);
+        options.add(new RightClickOption(completed ? "menu.seedatlas_xaero.mark_incomplete"
+            : "menu.seedatlas_xaero.mark_completed", options.size(), target) {
+            @Override
+            public void onAction(Screen screen) {
+                // Ignore stale menus if the world/seed changed while they were open.
+                if (key != null && key.equals(SeedAtlasStructureState.key(marker))) {
+                    SeedAtlasClientState.setStructureCompleted(key, !completed);
+                }
+            }
+        }.setActive(key != null));
+        options.add(new RightClickOption("menu.seedatlas_xaero.copy_coordinates", options.size(), target) {
+            @Override
+            public void onAction(Screen screen) {
+                String coordinates = "X: " + marker.x()
+                    + (marker.y() == Integer.MIN_VALUE ? "" : ", Y: " + marker.y()) + ", Z: " + marker.z();
+                Minecraft.getInstance().keyboardHandler.setClipboard(coordinates);
+            }
+        });
+        return options;
+    }
+
+    @Override
     public Tooltip getTooltip(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, boolean overMenu
     ) {
-        return new Tooltip(marker.tooltip(), true);
+        return new Tooltip(SeedAtlasStructureState.isCompleted(marker)
+            ? marker.tooltip().copy().append(" · ").append(Component.translatable("tooltip.seedatlas_xaero.completed"))
+            : marker.tooltip(), true);
     }
 }

@@ -11,7 +11,7 @@ import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 /** Scrollable, compact marker selector using Seed Atlas' original icons. */
 public final class MarkerSettingsScreen extends Screen {
 private static final Component TITLE = Component.translatable("screen.seedatlas_xaero.markers");
-private static final int HEADER_HEIGHT = 42;
+private static final int HEADER_HEIGHT = 68;
 private static final int FOOTER_HEIGHT = 38;
 private static final int MAX_LIST_WIDTH = 420;
 private static final int MIN_LIST_WIDTH = 180;
@@ -29,10 +29,15 @@ int horizontalMargin = Math.min(16, Math.max(6, this.width / 18));
 int listWidth = Math.min(MAX_LIST_WIDTH, Math.max(MIN_LIST_WIDTH, this.width - horizontalMargin * 2));
 listWidth = Math.min(listWidth, this.width - 8);
 int listLeft = (this.width - listWidth) / 2;
-int listTop = Math.min(HEADER_HEIGHT, Math.max(30, this.height / 5));
+int listTop = HEADER_HEIGHT;
 int listBottom = Math.max(listTop + 48, this.height - FOOTER_HEIGHT);
 listBottom = Math.min(listBottom, this.height - 26);
 int listHeight = Math.max(48, listBottom - listTop);
+
+this.addRenderableWidget(Button.builder(completedFilterMessage(), button -> {
+SeedAtlasClientState.setHideCompletedStructures(!SeedAtlasClientState.config().hideCompletedStructures());
+button.setMessage(completedFilterMessage());
+}).bounds(listLeft, 40, listWidth, 20).build());
 
 this.addRenderableWidget(new MarkerToggleList(this.minecraft, listLeft, listTop, listWidth, listHeight));
 
@@ -52,6 +57,11 @@ SeedAtlasClientState.config().structuresEnabled()
 : "screen.seedatlas_xaero.markers.disabled"
 );
 graphics.centeredText(this.font, status, this.width / 2, 23, 0xFFB8B8B8);
+}
+
+private static Component completedFilterMessage() {
+return Component.translatable("options.seedatlas_xaero.hide_completed",
+SeedAtlasClientState.config().hideCompletedStructures() ? "ON" : "OFF");
 }
 
 @Override

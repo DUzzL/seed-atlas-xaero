@@ -129,6 +129,14 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
             20,
             Minecraft.getInstance().getTextureManager().getTexture(texture).getTextureView()
         );
+        if (SeedAtlasStructureState.isCompleted(marker)) {
+            // Same batch and zoom as the structure icon, drawn on top at its lower right.
+            pose.translate(0.0F, 0.0F, 0.1F);
+            Identifier badge = Identifier.fromNamespaceAndPath("seedatlas_xaero", "textures/structure/completed.png");
+            MapRenderHelper.blitIntoMultiTextureRenderer(pose.last().pose(), this.context.batchedIcons,
+                1.0F, 1.0F, 0, 0, 9, 9, 1.0F, 1.0F, 1.0F, 1.0F, 9, 9,
+                Minecraft.getInstance().getTextureManager().getTexture(badge).getTextureView());
+        }
         return false;
     }
 

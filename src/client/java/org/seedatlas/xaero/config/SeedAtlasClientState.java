@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Stable client facade shared by commands, settings and the Xaero/native integration.
  *
- * <p>All mutations persist immediately and advance {@link #revision()}, allowing
+ * <p>All mutations persist immediately. Generation/display changes advance {@link #revision()}, allowing
  * renderers to invalidate cached tiles without depending on implementation details.</p>
  */
 public final class SeedAtlasClientState {
@@ -240,6 +240,15 @@ public final class SeedAtlasClientState {
 		if (config().setStructuresEnabled(enabled)) {
 			saveAndPublish(ChangeReason.MARKERS);
 		}
+	}
+
+	public static void setHideCompletedStructures(boolean hide) {
+		// Read by the marker renderer every frame; no terrain/structure rescan needed.
+		if (config().setHideCompletedStructures(hide)) save();
+	}
+
+	public static void setStructureCompleted(SeedAtlasConfig.StructureKey key, boolean completed) {
+		if (config().setCompleted(key, completed)) save();
 	}
 
 	public static void setBiomeResolution(final int resolution) {

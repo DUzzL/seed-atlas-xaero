@@ -11,7 +11,7 @@ import net.minecraft.world.level.Level;
 
 /** Mutable, synchronized representation of the client configuration. */
 public final class SeedAtlasConfig {
-	public static final int CURRENT_VERSION = 5;
+	public static final int CURRENT_VERSION = 6;
 	public static final int DEFAULT_OPACITY = 255;
 	public static final int DEFAULT_BIOME_RESOLUTION = 1;
 	public static final int DEFAULT_WORKER_THREADS = 0;
@@ -28,6 +28,8 @@ public final class SeedAtlasConfig {
 	private boolean layerEnabled = true;
 	private int opacity = DEFAULT_OPACITY;
 	private boolean structuresEnabled;
+	private boolean hideCompletedStructures;
+	private final Set<StructureKey> completedStructures = new LinkedHashSet<>();
 	private int biomeResolution = DEFAULT_BIOME_RESOLUTION;
 	private int workerThreads = DEFAULT_WORKER_THREADS;
 	private int prefetchRadius = DEFAULT_PREFETCH_RADIUS;
@@ -58,6 +60,34 @@ public final class SeedAtlasConfig {
 
 	public synchronized boolean structuresEnabled() {
 		return this.structuresEnabled;
+	}
+
+	public synchronized boolean hideCompletedStructures() { return hideCompletedStructures; }
+
+	synchronized boolean setHideCompletedStructures(boolean hide) {
+		if (hideCompletedStructures == hide) return false;
+		hideCompletedStructures = hide;
+		return true;
+	}
+
+	public synchronized boolean isCompleted(StructureKey key) {
+		return key != null && completedStructures.contains(key);
+	}
+
+	synchronized boolean setCompleted(StructureKey key, boolean completed) {
+		java.util.Objects.requireNonNull(key);
+		return completed ? completedStructures.add(key) : completedStructures.remove(key);
+	}
+
+	synchronized Set<StructureKey> completedSnapshot() { return new LinkedHashSet<>(completedStructures); }
+
+	/** Y is deliberately excluded: approximate structure heights can change with sampling. */
+	public record StructureKey(String world, long seed, boolean largeBiomes,
+	                           String dimension, String type, int x, int z) {
+		public StructureKey {
+			if (world == null || world.isBlank() || dimension == null || dimension.isBlank()
+				|| type == null || type.isBlank()) throw new IllegalArgumentException("Invalid structure identity");
+		}
 	}
 
 	public synchronized int biomeResolution() {

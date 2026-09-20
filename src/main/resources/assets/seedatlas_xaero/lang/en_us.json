@@ -81,5 +81,10 @@
     "marker.seedatlas_xaero.village":  "Village",
     "marker.seedatlas_xaero.well":  "Desert Well",
     "screen.seedatlas_xaero.performance.description":  "Map detail adapts automatically while zooming. A larger minimum step renders fewer nearby biome samples. Background prefetch only runs while the world map is open.",
-    "command.seedatlas_xaero.status.performance":  "Performance: biome resolution %1$s, workers %2$s, prefetch %3$s"
+    "command.seedatlas_xaero.status.performance":  "Performance: biome resolution %1$s, workers %2$s, prefetch %3$s",
+    "menu.seedatlas_xaero.mark_completed":  "Mark as completed",
+    "menu.seedatlas_xaero.mark_incomplete":  "Mark as incomplete",
+    "menu.seedatlas_xaero.copy_coordinates":  "Copy coordinates",
+    "tooltip.seedatlas_xaero.completed":  "Completed",
+    "options.seedatlas_xaero.hide_completed":  "Hide completed structures: %s"
 }

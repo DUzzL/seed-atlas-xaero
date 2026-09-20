@@ -47,6 +47,19 @@ final class SeedAtlasConfigIO {
 
 			JsonObject structures = object(root, "structures");
 			config.setStructuresEnabled(bool(structures, "enabled", config.structuresEnabled()));
+			config.setHideCompletedStructures(bool(structures, "hideCompleted", false));
+			JsonElement completed = structures.get("completed");
+			if (completed != null && completed.isJsonArray()) {
+				for (JsonElement entry : completed.getAsJsonArray()) {
+					if (!entry.isJsonObject() || !entry.getAsJsonObject().has("seed")
+						|| !entry.getAsJsonObject().has("x") || !entry.getAsJsonObject().has("z")) continue;
+					try {
+						config.setCompleted(GSON.fromJson(entry, SeedAtlasConfig.StructureKey.class), true);
+					} catch (RuntimeException ignored) {
+						// A malformed marker must not discard other saved settings or progress.
+					}
+				}
+			}
 
 			JsonObject performance = object(root, "performance");
 			int loadedBiomeResolution = integer(
@@ -116,6 +129,8 @@ final class SeedAtlasConfigIO {
 
 		JsonObject structures = new JsonObject();
 		structures.addProperty("enabled", config.structuresEnabled());
+		structures.addProperty("hideCompleted", config.hideCompletedStructures());
+		structures.add("completed", GSON.toJsonTree(config.completedSnapshot()));
 		root.add("structures", structures);
 
 		JsonObject performance = new JsonObject();

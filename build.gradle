@@ -108,3 +108,20 @@ tasks.register('nativeSmokeTest', JavaExec) {
 tasks.named('check') {
 	dependsOn tasks.named('nativeSmokeTest')
 }
+
+// Verify completion persistence and world/seed isolation without launching a game.
+def progressTestClasses = layout.buildDirectory.dir('classes/progressTest')
+tasks.register('compileProgressTest', JavaCompile) {
+	dependsOn tasks.named('clientClasses')
+	source = fileTree('src/testProgress/java') { include '**/*.java' }
+	classpath = sourceSets.client.compileClasspath + sourceSets.client.output
+	destinationDirectory = progressTestClasses
+}
+tasks.register('progressPersistenceTest', JavaExec) {
+	dependsOn tasks.named('compileProgressTest')
+	classpath = files(progressTestClasses) + sourceSets.client.runtimeClasspath
+	mainClass = 'org.seedatlas.xaero.config.StructureProgressTest'
+}
+tasks.named('check') {
+	dependsOn tasks.named('progressPersistenceTest')
+}
