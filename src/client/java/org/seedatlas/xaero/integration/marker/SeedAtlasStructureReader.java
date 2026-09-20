@@ -186,6 +186,17 @@ final class SeedAtlasStructureReader extends ElementReader<
                 Minecraft.getInstance().keyboardHandler.setClipboard(coordinates);
             }
         });
+        if (SeedAtlasWaypointBridge.available()) {
+            options.add(new RightClickOption("menu.seedatlas_xaero.create_waypoint", options.size(), target) {
+                @Override
+                public void onAction(Screen screen) {
+                    if (screen instanceof xaero.map.gui.GuiMap map && key != null
+                        && key.equals(SeedAtlasStructureState.key(marker))) {
+                        SeedAtlasWaypointBridge.create(map, marker);
+                    }
+                }
+            });
+        }
         return options;
     }
 

@@ -86,5 +86,7 @@
     "menu.seedatlas_xaero.mark_incomplete":  "Mark as incomplete",
     "menu.seedatlas_xaero.copy_coordinates":  "Copy coordinates",
     "tooltip.seedatlas_xaero.completed":  "Completed",
-    "options.seedatlas_xaero.hide_completed":  "Hide completed structures: %s"
+    "options.seedatlas_xaero.hide_completed":  "Hide completed structures: %s",
+    "menu.seedatlas_xaero.create_waypoint":  "Create waypoint",
+    "message.seedatlas_xaero.waypoint_unavailable":  "Waypoint creation is currently unavailable."
 }
