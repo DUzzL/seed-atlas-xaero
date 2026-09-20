@@ -3,12 +3,17 @@ package org.seedatlas.xaero.integration;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.OptionalLong;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
+import org.seedatlas.xaero.integration.biome.BiomeHighlighter;
 import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
 import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.nativeapi.Dimension;
@@ -23,8 +28,9 @@ public final class SeedAtlasXaeroIntegration {
     private static volatile boolean fullMapActive;
     /** True while Seed Atlas settings (or nested screens) cover the world map. */
     private static volatile boolean heavyWorkPaused;
-    private static volatile long lastRevision = Long.MIN_VALUE;
+    private static final StateRevisionTracker REVISIONS = new StateRevisionTracker();
     private static volatile double observedMapScale = 1.0;
+    private static volatile List<BiomeSample> availableBiomes;
     private static boolean initialized;
     private static SeedAtlasNative session;
     private static long sessionSeed;
@@ -99,21 +105,15 @@ public final class SeedAtlasXaeroIntegration {
             SeedAtlasBiomeOverlayRenderer.INSTANCE.setMapActive(false);
             SeedAtlasBiomeOverlayRenderer.INSTANCE.idleCompletely();
         } else if (fullMapActive) {
+            synchronizeRevision();
             SeedAtlasBiomeOverlayRenderer.INSTANCE.setMapActive(true);
         }
     }
 
     /** Applies configuration changes without touching Xaero's leaf-region cache. */
     public static void synchronizeRevision() {
-        long revision = SeedAtlasClientState.revision();
-        if (revision == lastRevision) {
-            return;
-        }
-        lastRevision = revision;
-        // Settings toggles must not kick the tile pipeline while the menu is open.
-        if (!heavyWorkPaused) {
-            SeedAtlasBiomeOverlayRenderer.INSTANCE.onStateRevision(revision);
-        }
+        REVISIONS.synchronize(SeedAtlasClientState.revision(), heavyWorkPaused,
+            revision -> SeedAtlasBiomeOverlayRenderer.INSTANCE.onStateRevision(revision));
     }
 
     /**
@@ -158,6 +158,54 @@ public final class SeedAtlasXaeroIntegration {
         ResourceKey<Level> level, int blockX, int blockZ
     ) {
         return SeedAtlasBiomeOverlayRenderer.INSTANCE.biomeAtCached(level, blockX, blockZ);
+    }
+
+    /** Localised biome name with a readable fallback for unknown engine ids. */
+    public static Component biomeDisplayName(String biomeId) {
+        String sanitized = biomeId == null ? "" : biomeId.replace('\r', ' ').replace('\n', ' ').trim();
+        int separator = sanitized.indexOf(':');
+        String namespace = separator > 0 ? sanitized.substring(0, separator) : "minecraft";
+        String path = separator > 0 && separator < sanitized.length() - 1
+            ? sanitized.substring(separator + 1) : sanitized;
+        String[] words = path.replace('/', '_').split("_");
+        StringBuilder fallback = new StringBuilder();
+        for (String word : words) {
+            if (word.isEmpty()) continue;
+            if (!fallback.isEmpty()) fallback.append(' ');
+            fallback.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return Component.translatableWithFallback(
+            "biome." + namespace + "." + path,
+            fallback.isEmpty() ? path : fallback.toString()
+        );
+    }
+
+    /**
+     * Every biome of the running Minecraft version, sorted by resource name. Requires a native
+     * session, so the list is empty while no seed is configured.
+     */
+    public static List<BiomeSample> availableBiomes() {
+        List<BiomeSample> cached = availableBiomes;
+        if (cached != null) {
+            return cached;
+        }
+        List<BiomeSample> found = withSession(session -> {
+            List<BiomeSample> biomes = new ArrayList<>();
+            for (int id = 0; id < BiomeHighlighter.BIOME_ID_LIMIT; ++id) {
+                String name = session.biomeName(id);
+                if (name == null || name.contains("unknown_")) {
+                    continue;
+                }
+                biomes.add(new BiomeSample(id, name, session.biomeColor(id)));
+            }
+            biomes.sort(Comparator.comparing(BiomeSample::name));
+            return List.copyOf(biomes);
+        });
+        if (found == null || found.isEmpty()) {
+            return List.of();
+        }
+        availableBiomes = found;
+        return found;
     }
 
     public static <T> T withSession(SessionOperation<T> operation) {

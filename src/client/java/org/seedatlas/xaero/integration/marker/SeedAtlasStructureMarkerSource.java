@@ -108,12 +108,11 @@ final class SeedAtlasStructureMarkerSource {
         radius = Math.min(MAX_RADIUS, Math.ceilDiv(radius, grid) * grid);
         int centerX = Math.floorDiv((int)Math.floor(cameraX), grid) * grid;
         int centerZ = Math.floorDiv((int)Math.floor(cameraZ), grid) * grid;
-        Set<String> enabled = zoomFilteredMarkers(
-            SeedAtlasClientState.config().enabledMarkerIds(), safeScale, radius);
-        if (enabled.isEmpty()) {
-            clear(context);
-            return;
-        }
+        Set<String> configured = SeedAtlasClientState.config().enabledMarkerIds();
+        Set<String> enabled = zoomFilteredMarkers(configured, safeScale, radius);
+        // Zoom visibility is a view concern: the snapshot stays in memory and the provider
+        // filters it, so zooming back in shows markers again without waiting for a rescan.
+        context.visibleMarkerIds = enabled;
 
         Request next = new Request(
             seed.getAsLong(),
@@ -125,7 +124,8 @@ final class SeedAtlasStructureMarkerSource {
             centerX + radius,
             centerZ + radius,
             radius,
-            enabled
+            enabled,
+            configured
         );
         adjustWorkerParallelism();
         Request previous = this.requested;
@@ -136,9 +136,12 @@ final class SeedAtlasStructureMarkerSource {
         if (previous == null || !next.hasSameMarkerIdentity(previous)) {
             context.markers = List.of();
         }
+        if (enabled.isEmpty()) {
+            return;
+        }
         List<SeedAtlasStructureMarker> cached = cached(next);
         if (cached != null) {
-            context.markers = cached;
+            context.markers = mergeWithSkipped(context.markers, cached, next.enabled);
             return;
         }
 
@@ -156,13 +159,14 @@ final class SeedAtlasStructureMarkerSource {
                 List<SeedAtlasStructureMarker> scanned = scan(next, current);
                 if (current.getAsBoolean()) {
                     cache(next, scanned);
-                    context.markers = scanned;
+                    context.markers = mergeWithSkipped(context.markers, scanned, next.enabled);
                 }
             }, SCAN_DEBOUNCE_MILLIS, TimeUnit.MILLISECONDS);
         }
     }
 
     private void clear(SeedAtlasStructureContext context) {
+        context.visibleMarkerIds = Set.of();
         if (this.requested == null && context.markers.isEmpty()) {
             return;
         }
@@ -175,6 +179,28 @@ final class SeedAtlasStructureMarkerSource {
                 this.scheduledScan = null;
             }
         }
+    }
+
+    /**
+     * Keeps the marker types a scan skipped because the current zoom hides them, so zooming
+     * back in shows them immediately instead of waiting for the next viewport scan.
+     */
+    private static List<SeedAtlasStructureMarker> mergeWithSkipped(
+        List<SeedAtlasStructureMarker> previous,
+        List<SeedAtlasStructureMarker> scanned,
+        Set<String> scannedTypes
+    ) {
+        if (previous.isEmpty()) {
+            return scanned;
+        }
+        List<SeedAtlasStructureMarker> merged = new ArrayList<>(scanned.size() + previous.size());
+        merged.addAll(scanned);
+        for (SeedAtlasStructureMarker marker : previous) {
+            if (!scannedTypes.contains(marker.type().id())) {
+                merged.add(marker);
+            }
+        }
+        return List.copyOf(merged);
     }
 
     private List<SeedAtlasStructureMarker> cached(Request request) {
@@ -415,14 +441,16 @@ final class SeedAtlasStructureMarkerSource {
         int maxX,
         int maxZ,
         int radius,
-        Set<String> enabled
+        Set<String> enabled,
+        Set<String> configured
     ) {
+        /** Identity ignores the zoom filter so zoom changes never discard the snapshot. */
         private boolean hasSameMarkerIdentity(Request other) {
             return this.seed == other.seed
                 && this.largeBiomes == other.largeBiomes
                 && this.dimension == other.dimension
                 && this.level.equals(other.level)
-                && this.enabled.equals(other.enabled);
+                && this.configured.equals(other.configured);
         }
     }
 }

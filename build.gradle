@@ -125,3 +125,38 @@ tasks.register('progressPersistenceTest', JavaExec) {
 tasks.named('check') {
 	dependsOn tasks.named('progressPersistenceTest')
 }
+
+// Guard visible icon sizes, aspect ratios and transparent rail gaps without a game window.
+def iconTestClasses = layout.buildDirectory.dir('classes/iconTest')
+tasks.register('compileIconTest', JavaCompile) {
+	dependsOn tasks.named('clientClasses')
+	source = fileTree('src/testIcons/java') { include '**/*.java' }
+	classpath = sourceSets.client.compileClasspath + sourceSets.client.output
+	destinationDirectory = iconTestClasses
+}
+tasks.register('iconLayoutTest', JavaExec) {
+	dependsOn tasks.named('compileIconTest')
+	classpath = files(iconTestClasses) + sourceSets.client.runtimeClasspath
+	mainClass = 'org.seedatlas.xaero.integration.icon.IconLayoutTest'
+	jvmArgs '-Djava.awt.headless=true'
+}
+tasks.named('check') {
+	dependsOn tasks.named('iconLayoutTest')
+}
+
+// Guard the Seed Atlas style biome highlight colours without a game window.
+def biomeHighlightTestClasses = layout.buildDirectory.dir('classes/biomeHighlightTest')
+tasks.register('compileBiomeHighlightTest', JavaCompile) {
+	dependsOn tasks.named('clientClasses')
+	source = fileTree('src/testBiome/java') { include '**/*.java' }
+	classpath = sourceSets.client.compileClasspath + sourceSets.client.output
+	destinationDirectory = biomeHighlightTestClasses
+}
+tasks.register('biomeHighlightTest', JavaExec) {
+	dependsOn tasks.named('compileBiomeHighlightTest')
+	classpath = files(biomeHighlightTestClasses) + sourceSets.client.runtimeClasspath
+	mainClass = 'org.seedatlas.xaero.biome.BiomeHighlightTest'
+}
+tasks.named('check') {
+	dependsOn tasks.named('biomeHighlightTest')
+}

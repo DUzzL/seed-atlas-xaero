@@ -52,7 +52,29 @@ abstract class GuiMapMixin {
         SeedAtlasBiomeOverlayRenderer.INSTANCE.renderBackground(
             pose, processor.getMapWorld().getCurrentDimension().getDimId(),
             this.cameraX, this.cameraZ, this.scale, flooredCameraX, flooredCameraZ,
-            processor.getMultiTextureRenderTypeRenderers()
+            processor.getMultiTextureRenderTypeRenderers(), false
+        );
+    }
+
+    // Both terrain batches have been flushed and released. Use the same FBO and pose,
+    // before grids, waypoints and structure markers, so explored blocks cannot hide focus.
+    @Inject(method = "extractRenderState", at = @At(
+        value = "INVOKE",
+        target = "Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;draw(Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer;)V",
+        ordinal = 1, shift = At.Shift.AFTER
+    ))
+    private void seedAtlas$renderBiomeFocus(
+        CallbackInfo ci,
+        @Local(name = "matrixStack") PoseStack pose,
+        @Local(name = "flooredCameraX") int flooredCameraX,
+        @Local(name = "flooredCameraZ") int flooredCameraZ
+    ) {
+        GuiMap map = (GuiMap)(Object)this;
+        var processor = map.getMapProcessor();
+        SeedAtlasBiomeOverlayRenderer.INSTANCE.renderBackground(
+            pose, processor.getMapWorld().getCurrentDimension().getDimId(),
+            this.cameraX, this.cameraZ, this.scale, flooredCameraX, flooredCameraZ,
+            processor.getMultiTextureRenderTypeRenderers(), true
         );
     }
 

@@ -6,6 +6,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
+import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 
 /** Scrollable, compact marker selector using Seed Atlas' original icons. */
@@ -34,10 +35,17 @@ int listBottom = Math.max(listTop + 48, this.height - FOOTER_HEIGHT);
 listBottom = Math.min(listBottom, this.height - 26);
 int listHeight = Math.max(48, listBottom - listTop);
 
+int headerGap = 6;
+int headerHalf = (listWidth - headerGap) / 2;
 this.addRenderableWidget(Button.builder(completedFilterMessage(), button -> {
 SeedAtlasClientState.setHideCompletedStructures(!SeedAtlasClientState.config().hideCompletedStructures());
 button.setMessage(completedFilterMessage());
-}).bounds(listLeft, 40, listWidth, 20).build());
+}).bounds(listLeft, 40, headerHalf, 20).build());
+
+this.addRenderableWidget(Button.builder(markerSizeMessage(), button -> {
+SeedAtlasClientState.setMarkerSize(SeedAtlasConfig.nextMarkerSize(SeedAtlasClientState.config().markerSize()));
+button.setMessage(markerSizeMessage());
+}).bounds(listLeft + headerHalf + headerGap, 40, listWidth - headerHalf - headerGap, 20).build());
 
 this.addRenderableWidget(new MarkerToggleList(this.minecraft, listLeft, listTop, listWidth, listHeight));
 
@@ -62,6 +70,11 @@ graphics.centeredText(this.font, status, this.width / 2, 23, 0xFFB8B8B8);
 private static Component completedFilterMessage() {
 return Component.translatable("options.seedatlas_xaero.hide_completed",
 SeedAtlasClientState.config().hideCompletedStructures() ? "ON" : "OFF");
+}
+
+private static Component markerSizeMessage() {
+return Component.translatable("options.seedatlas_xaero.marker_size",
+SeedAtlasClientState.config().markerSize() + " %");
 }
 
 @Override

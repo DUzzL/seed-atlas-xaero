@@ -19,6 +19,9 @@ public final class SeedAtlasConfig {
 	public static final int[] BIOME_RESOLUTION_STEPS = {1, 2, 4, 8, 16};
 	public static final int[] WORKER_THREAD_STEPS = {0, 1, 2, 4, 8};
 	public static final int[] PREFETCH_RADIUS_STEPS = {0, 1, 2, 3};
+	/** Marker size in percent of the default pixel band. */
+	public static final int DEFAULT_MARKER_SIZE = 150;
+	public static final int[] MARKER_SIZE_STEPS = {50, 75, 100, 150, 200, 250};
 	public static final int DEFAULT_OVERWORLD_Y = 255;
 	public static final int DEFAULT_NETHER_Y = 64;
 	public static final int DEFAULT_END_Y = 128;
@@ -33,6 +36,9 @@ public final class SeedAtlasConfig {
 	private int biomeResolution = DEFAULT_BIOME_RESOLUTION;
 	private int workerThreads = DEFAULT_WORKER_THREADS;
 	private int prefetchRadius = DEFAULT_PREFETCH_RADIUS;
+	private int markerSize = DEFAULT_MARKER_SIZE;
+	private boolean biomeHighlightEnabled;
+	private final Set<Integer> highlightedBiomes = new LinkedHashSet<>();
 	private boolean largeBiomes;
 	private int overworldY = DEFAULT_OVERWORLD_Y;
 	private int netherY = DEFAULT_NETHER_Y;
@@ -60,6 +66,47 @@ public final class SeedAtlasConfig {
 
 	public synchronized boolean structuresEnabled() {
 		return this.structuresEnabled;
+	}
+
+	public synchronized int markerSize() {
+		return this.markerSize;
+	}
+
+	/** Marker size as a factor of the default pixel band, read every frame by the renderer. */
+	public synchronized float markerSizeFactor() {
+		return this.markerSize / 100.0F;
+	}
+
+	public static int nextMarkerSize(final int current) {
+		for (int index = 0; index < MARKER_SIZE_STEPS.length; index++) {
+			if (MARKER_SIZE_STEPS[index] == current) {
+				return MARKER_SIZE_STEPS[(index + 1) % MARKER_SIZE_STEPS.length];
+			}
+		}
+		return DEFAULT_MARKER_SIZE;
+	}
+
+	public synchronized boolean biomeHighlightEnabled() {
+		return this.biomeHighlightEnabled;
+	}
+
+	/** Snapshot of the highlighted engine biome ids; the set is not shared. */
+	public synchronized Set<Integer> highlightedBiomes() {
+		return Collections.unmodifiableSet(new LinkedHashSet<>(this.highlightedBiomes));
+	}
+
+	public synchronized int highlightedBiomeCount() {
+		return this.highlightedBiomes.size();
+	}
+
+	/** Allocation-free check used by the selector UI on every frame. */
+	public synchronized boolean isBiomeHighlighted(final int biomeId) {
+		return this.highlightedBiomes.contains(biomeId);
+	}
+
+	/** Exact, immutable cache signature; independent of the order biomes were selected. */
+	public synchronized Set<Integer> highlightSignature() {
+		return this.biomeHighlightEnabled ? Set.copyOf(this.highlightedBiomes) : Set.of();
 	}
 
 	public synchronized boolean hideCompletedStructures() { return hideCompletedStructures; }
@@ -173,6 +220,48 @@ public final class SeedAtlasConfig {
 			return false;
 		}
 		this.structuresEnabled = enabled;
+		return true;
+	}
+
+	synchronized boolean setMarkerSize(final int markerSize) {
+		int normalized = allowedValue(markerSize, MARKER_SIZE_STEPS, DEFAULT_MARKER_SIZE);
+		if (this.markerSize == normalized) {
+			return false;
+		}
+		this.markerSize = normalized;
+		return true;
+	}
+
+	synchronized boolean setBiomeHighlightEnabled(final boolean enabled) {
+		if (this.biomeHighlightEnabled == enabled) {
+			return false;
+		}
+		this.biomeHighlightEnabled = enabled;
+		return true;
+	}
+
+	synchronized boolean addHighlightedBiome(final int biomeId) {
+		if (biomeId < 0 || biomeId > 255) {
+			return false;
+		}
+		return this.highlightedBiomes.add(biomeId);
+	}
+
+	synchronized boolean toggleHighlightedBiome(final int biomeId) {
+		if (biomeId < 0 || biomeId > 255) {
+			return false;
+		}
+		if (!this.highlightedBiomes.remove(biomeId)) {
+			this.highlightedBiomes.add(biomeId);
+		}
+		return true;
+	}
+
+	synchronized boolean clearHighlightedBiomes() {
+		if (this.highlightedBiomes.isEmpty()) {
+			return false;
+		}
+		this.highlightedBiomes.clear();
 		return true;
 	}
 

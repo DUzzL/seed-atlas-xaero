@@ -81,5 +81,15 @@
     "marker.seedatlas_xaero.village":  "Dorf",
     "marker.seedatlas_xaero.well":  "WÃ¼stenbrunnen",
     "screen.seedatlas_xaero.performance.description":  "Der Kartendetailgrad passt sich beim Zoomen automatisch an. Ein groesserer Mindestschritt berechnet weniger Biom-Samples. Hintergrund-Prefetch laeuft nur bei geoeffneter Weltkarte.",
-    "command.seedatlas_xaero.status.performance":  "Performance: Biom-Aufloesung %1$s, Worker %2$s, Prefetch %3$s"
+    "command.seedatlas_xaero.status.performance":  "Performance: Biom-Aufloesung %1$s, Worker %2$s, Prefetch %3$s",
+    "options.seedatlas_xaero.marker_size":  "Markergroesse: %s",
+    "options.seedatlas_xaero.biome_highlights":  "Biom-Highlights...",
+    "options.seedatlas_xaero.highlight_enabled":  "Biom-Highlighting: %s",
+    "options.seedatlas_xaero.highlight_clear":  "Auswahl loeschen",
+    "options.seedatlas_xaero.highlight_select":  "Biome auswaehlen (%s) %s",
+    "options.seedatlas_xaero.highlight_select_open":  "Biome auswaehlen (%s) %s",
+    "screen.seedatlas_xaero.biome_highlights":  "Biom-Highlights",
+    "screen.seedatlas_xaero.biome_highlights.selected":  "%s Biome hervorgehoben",
+    "screen.seedatlas_xaero.biome_highlights.no_seed":  "Erst einen Seed setzen: die Biom-Liste kommt aus der Generator-Engine.",
+    "screen.seedatlas_xaero.biome_highlights.disabled": "Highlighting aus · %s Biome ausgewählt"
 }

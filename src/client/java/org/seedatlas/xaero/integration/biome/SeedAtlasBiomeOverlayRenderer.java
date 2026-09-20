@@ -111,6 +111,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     private volatile boolean mapActive;
     private volatile int currentSampleStep = 1;
     private volatile GenerationSignature generationSignature;
+    /** Empty while highlighting is off; otherwise a 256-entry lookup for the tile workers. */
+    private volatile boolean[] highlightMask = new boolean[0];
     private volatile ViewRequest currentView;
     private volatile Set<TileKey> viewportDesired = Set.of();
     private volatile Set<TileKey> backgroundDesired = Set.of();
@@ -176,6 +178,10 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         GenerationSignature next = currentGenerationSignature();
         boolean worldChanged = !next.equals(this.generationSignature);
         this.generationSignature = next;
+        this.highlightMask = BiomeHighlighter.mask(
+            SeedAtlasClientState.config().biomeHighlightEnabled(),
+            SeedAtlasClientState.config().highlightedBiomes()
+        );
         adjustParallelism();
 
         if (worldChanged) {
@@ -378,22 +384,24 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     }
 
     /**
-     * Called inside Xaero's terrain framebuffer after its clear and before any
-     * terrain is drawn. Its map shader discards unknown pixels, so only those
-     * pixels retain this seed background; explored terrain keeps its own colors.
-     * The supplied pose already includes Xaero's FBO zoom and fractional offset.
+     * Draws in Xaero's terrain framebuffer: below explored terrain normally, above it in
+     * biome focus mode. The pose already includes FBO zoom and fractional offsets.
+     * The two calls are mutually exclusive and use the same viewport and texture cache.
      */
     public void renderBackground(
         PoseStack pose, ResourceKey<Level> dimension,
         double cameraX, double cameraZ, double scale,
         int flooredCameraX, int flooredCameraZ,
-        MultiTextureRenderTypeRendererProvider rendererProvider
+        MultiTextureRenderTypeRendererProvider rendererProvider, boolean aboveTerrain
     ) {
         if (!this.mapActive || SeedAtlasXaeroIntegration.isHeavyWorkPaused()
             || !SeedAtlasXaeroIntegration.isLayerActive()) {
             this.context.slices = List.of();
             return;
         }
+        // Focus is an opaque biome map above terrain; normal mode remains underneath it.
+        boolean focused = this.highlightMask.length != 0;
+        if (aboveTerrain != focused) return;
         Minecraft minecraft = Minecraft.getInstance();
         observeView(dimension, cameraX, cameraZ, scale,
             guiWidth(minecraft), guiHeight(minecraft));
@@ -405,7 +413,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         MultiTextureRenderTypeRenderer renderer =
             rendererProvider.getRenderer(CustomRenderTypes.GUI_NEAREST);
         Matrix4f matrix = pose.last().pose();
-        float alpha = SeedAtlasClientState.config().opacityFraction();
+        float alpha = focused ? 1.0F : SeedAtlasClientState.config().opacityFraction();
+        float depth = focused ? 1.0F : -1.0F;
         for (OverlaySlice slice : this.context.slices) {
             float left = (float)(slice.minX - flooredCameraX);
             float right = (float)(slice.maxX - flooredCameraX);
@@ -417,14 +426,14 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             float v0 = slice.v0 / textureSize;
             float v1 = slice.v1 / textureSize;
             BufferBuilder buffer = renderer.begin(slice.source.texture.getTextureView());
-            // Terrain is at Z=0. Keep this background behind its depth plane.
-            buffer.addVertex(matrix, left, bottom, -1.0F)
+            // Terrain is at Z=0; the focus pass must cover explored terrain as well.
+            buffer.addVertex(matrix, left, bottom, depth)
                 .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u0, v1);
-            buffer.addVertex(matrix, right, bottom, -1.0F)
+            buffer.addVertex(matrix, right, bottom, depth)
                 .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u1, v1);
-            buffer.addVertex(matrix, right, top, -1.0F)
+            buffer.addVertex(matrix, right, top, depth)
                 .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u1, v0);
-            buffer.addVertex(matrix, left, top, -1.0F)
+            buffer.addVertex(matrix, left, top, depth)
                 .setColor(1.0F, 1.0F, 1.0F, alpha).setUv(u0, v0);
         }
         // Flush while the terrain framebuffer and its projection are active.
@@ -490,7 +499,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         MultiTextureRenderTypeRendererProvider rendererProvider
     ) {
         // This element only supplies the biome tooltip. The raster has already
-        // been rendered beneath terrain by renderBackground, never above it.
+        // been rendered in the terrain framebuffer by renderBackground.
         return false;
     }
 
@@ -925,7 +934,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             config.largeBiomes(),
             config.overworldY(),
             config.netherY(),
-            config.endY()
+            config.endY(),
+            config.highlightSignature()
         );
     }
 
@@ -1059,24 +1069,6 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         return value == null ? "" : value.replace('\r', ' ').replace('\n', ' ').trim();
     }
 
-    private static Component biomeDisplayName(String biomeId) {
-        biomeId = sanitizeSingleLine(biomeId);
-        int separator = biomeId.indexOf(':');
-        String namespace = separator > 0 ? biomeId.substring(0, separator) : "minecraft";
-        String path = separator > 0 && separator < biomeId.length() - 1
-            ? biomeId.substring(separator + 1) : biomeId;
-        String[] words = path.replace('/', '_').split("_");
-        StringBuilder fallback = new StringBuilder();
-        for (String word : words) {
-            if (word.isEmpty()) continue;
-            if (!fallback.isEmpty()) fallback.append(' ');
-            fallback.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
-        }
-        return Component.translatableWithFallback(
-            "biome." + namespace + "." + path,
-            fallback.isEmpty() ? path : fallback.toString()
-        );
-    }
 
     private final class TileTask implements Runnable, Comparable<TileTask> {
         private final TileKey key;
@@ -1084,6 +1076,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         private final int category;
         private final long distance;
         private final long sequence;
+        private final boolean[] highlightMask;
         private final AtomicBoolean started = new AtomicBoolean();
 
         private TileTask(
@@ -1094,6 +1087,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             this.category = category;
             this.distance = distance;
             this.sequence = sequence;
+            this.highlightMask = SeedAtlasBiomeOverlayRenderer.this.highlightMask;
         }
 
         @Override
@@ -1130,14 +1124,17 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                     return;
                 }
                 int count = Math.multiplyExact(this.key.textureSize, this.key.textureSize);
-                int[] abgr = new int[count];
-                region.copyArgbSamplesTo(abgr, 0);
-                // Convert once on the worker so the render thread only bulk-uploads.
-                for (int i = 0; i < count; ++i) {
-                    abgr[i] = ARGB.toABGR(abgr[i]);
-                }
+                int[] pixels = new int[count];
+                region.copyArgbSamplesTo(pixels, 0);
                 short[] ids = new short[count];
                 region.copyBiomeIdsToUnsignedShorts(ids, 0);
+                // Highlighting rewrites the samples before the upload, exactly like the
+                // desktop Seed Atlas renderer does while it builds its biome image.
+                BiomeHighlighter.apply(pixels, ids, this.highlightMask);
+                // Convert once on the worker so the render thread only bulk-uploads.
+                for (int i = 0; i < count; ++i) {
+                    pixels[i] = ARGB.toABGR(pixels[i]);
+                }
                 if (!isCurrent()) {
                     return;
                 }
@@ -1153,7 +1150,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                             this.distance,
                             this.sequence,
                             ids,
-                            abgr));
+                            pixels));
                 }
             } catch (RuntimeException | LinkageError ignored) {
                 if (isCurrent()) markFailed();
@@ -1337,7 +1334,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             }
             int y = SeedAtlasXaeroIntegration.yFor(context.dimension);
             Component text = Component.empty()
-                .append(biomeDisplayName(biome.name()))
+                .append(SeedAtlasXaeroIntegration.biomeDisplayName(biome.name()))
                 .append(Component.literal(
                     " \u00b7 Y=" + y + " \u00b7 X=" + blockX + " \u00b7 Z=" + blockZ));
             return new Tooltip(text, true);
@@ -1492,7 +1489,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         boolean largeBiomes,
         int overworldY,
         int netherY,
-        int endY
+        int endY,
+        Set<Integer> highlightSignature
     ) {
     }
 }

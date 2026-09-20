@@ -83,6 +83,21 @@ final class SeedAtlasConfigIO {
 			JsonObject generation = object(root, "worldGeneration");
 			config.setLargeBiomes(bool(generation, "largeBiomes", config.largeBiomes()));
 
+			JsonObject display = object(root, "display");
+			config.setMarkerSize(integer(display, "markerSize", config.markerSize()));
+
+			JsonObject highlight = object(root, "biomeHighlight");
+			config.setBiomeHighlightEnabled(
+				bool(highlight, "enabled", config.biomeHighlightEnabled()));
+			JsonElement highlightedBiomes = highlight.get("biomes");
+			if (highlightedBiomes != null && highlightedBiomes.isJsonArray()) {
+				for (JsonElement entry : highlightedBiomes.getAsJsonArray()) {
+					if (entry.isJsonPrimitive() && entry.getAsJsonPrimitive().isNumber()) {
+						config.addHighlightedBiome(entry.getAsInt());
+					}
+				}
+			}
+
 			JsonObject heights = object(root, "biomeSampleY");
 			config.setOverworldY(integer(heights, "overworld", config.overworldY()));
 			config.setNetherY(integer(heights, "nether", config.netherY()));
@@ -142,6 +157,15 @@ final class SeedAtlasConfigIO {
 		JsonObject generation = new JsonObject();
 		generation.addProperty("largeBiomes", config.largeBiomes());
 		root.add("worldGeneration", generation);
+
+		JsonObject display = new JsonObject();
+		display.addProperty("markerSize", config.markerSize());
+		root.add("display", display);
+
+		JsonObject highlight = new JsonObject();
+		highlight.addProperty("enabled", config.biomeHighlightEnabled());
+		highlight.add("biomes", GSON.toJsonTree(config.highlightedBiomes()));
+		root.add("biomeHighlight", highlight);
 
 		JsonObject heights = new JsonObject();
 		heights.addProperty("overworld", config.overworldY());

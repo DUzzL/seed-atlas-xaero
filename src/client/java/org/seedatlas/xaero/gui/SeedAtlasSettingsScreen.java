@@ -80,6 +80,11 @@ public final class SeedAtlasSettingsScreen extends Screen {
 			this.minecraft.gui.setScreen(new PerformanceSettingsScreen(this));
 		}).bounds(left, 150, contentWidth, 20).build());
 
+		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.biome_highlights"), button -> {
+			this.commitValues();
+			this.minecraft.gui.setScreen(new BiomeHighlightScreen(this));
+		}).bounds(left, 175, contentWidth, 20).build());
+
 		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
 			.bounds((this.width - 200) / 2, this.height - 28, 200, 20)
 			.build());
@@ -122,7 +127,7 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		Component status = seed.isPresent()
 			? Component.translatable("screen.seedatlas_xaero.active_seed", seed.getAsLong())
 			: Component.translatable("screen.seedatlas_xaero.no_seed");
-		graphics.centeredText(this.font, status, this.width / 2, 176, 0xFFA0A0A0);
+		graphics.centeredText(this.font, status, this.width / 2, this.height - 42, 0xFFA0A0A0);
 	}
 
 	@Override

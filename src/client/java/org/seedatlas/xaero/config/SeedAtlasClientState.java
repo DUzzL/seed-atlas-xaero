@@ -247,6 +247,39 @@ public final class SeedAtlasClientState {
 		if (config().setHideCompletedStructures(hide)) save();
 	}
 
+	/** Marker size is read by the marker renderer every frame, so no rescan is needed. */
+	public static void setMarkerSize(final int markerSize) {
+		if (config().setMarkerSize(markerSize)) save();
+	}
+
+	public static float markerSizeFactor() {
+		return config().markerSizeFactor();
+	}
+
+	/**
+	 * Highlight changes rebuild the biome tiles, so they publish a display revision
+	 * instead of only saving.
+	 */
+	public static void setBiomeHighlightEnabled(final boolean enabled) {
+		if (config().setBiomeHighlightEnabled(enabled)) {
+			saveAndPublish(ChangeReason.DISPLAY);
+		}
+	}
+
+	public static void toggleHighlightedBiome(final int biomeId) {
+		if (config().toggleHighlightedBiome(biomeId)) {
+			// Selecting a biome should immediately activate the focus view.
+			if (config().isBiomeHighlighted(biomeId)) config().setBiomeHighlightEnabled(true);
+			saveAndPublish(ChangeReason.DISPLAY);
+		}
+	}
+
+	public static void clearHighlightedBiomes() {
+		if (config().clearHighlightedBiomes()) {
+			saveAndPublish(ChangeReason.DISPLAY);
+		}
+	}
+
 	public static void setStructureCompleted(SeedAtlasConfig.StructureKey key, boolean completed) {
 		if (config().setCompleted(key, completed)) save();
 	}

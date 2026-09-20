@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import org.seedatlas.xaero.command.SeedAtlasCommands;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
+import org.seedatlas.xaero.integration.icon.StructureIcons;
 
 /** Client-only entry point for Seed Atlas for Xaero's World Map. */
 public final class SeedAtlasXaero implements ClientModInitializer {
@@ -13,6 +14,7 @@ public final class SeedAtlasXaero implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		SeedAtlasClientState.initialize();
+		StructureIcons.initialize();
 		SeedAtlasXaeroIntegration.initialize();
 		SeedAtlasClientState.save();
 		SeedAtlasCommands.register();

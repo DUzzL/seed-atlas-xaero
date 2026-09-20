@@ -87,6 +87,16 @@
     "menu.seedatlas_xaero.copy_coordinates":  "Copy coordinates",
     "tooltip.seedatlas_xaero.completed":  "Completed",
     "options.seedatlas_xaero.hide_completed":  "Hide completed structures: %s",
+    "options.seedatlas_xaero.marker_size":  "Marker size: %s",
+    "options.seedatlas_xaero.biome_highlights":  "Biome highlights...",
+    "options.seedatlas_xaero.highlight_enabled":  "Biome highlighting: %s",
+    "options.seedatlas_xaero.highlight_clear":  "Clear selection",
+    "options.seedatlas_xaero.highlight_select":  "Select biomes (%s) %s",
+    "options.seedatlas_xaero.highlight_select_open":  "Select biomes (%s) %s",
+    "screen.seedatlas_xaero.biome_highlights":  "Biome Highlights",
+    "screen.seedatlas_xaero.biome_highlights.selected":  "%s biomes highlighted",
+    "screen.seedatlas_xaero.biome_highlights.no_seed":  "Set a seed first: the biome list comes from the generation engine.",
     "menu.seedatlas_xaero.create_waypoint":  "Create waypoint",
-    "message.seedatlas_xaero.waypoint_unavailable":  "Waypoint creation is currently unavailable."
+    "message.seedatlas_xaero.waypoint_unavailable":  "Waypoint creation is currently unavailable.",
+    "screen.seedatlas_xaero.biome_highlights.disabled": "Highlighting off · %s biomes selected"
 }

@@ -9,25 +9,18 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
-import org.seedatlas.xaero.config.MarkerType;
+import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
-import org.seedatlas.xaero.integration.icon.StructureIcons;
+import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 
-/**
- * Compact, Xaero-like structure selector.
- *
- * <p>Minecraft 26.2 changed selection-list layout enough that the stock
- * ContainerObjectSelectionList produced broken hitboxes and a dead scrollbar.
- * This widget owns its own clipping, wheel scrolling and row layout.</p>
- */
-final class MarkerToggleList extends AbstractWidget {
+/** Biome selector with the same rows, switches and scrollbar as the structure selector. */
+final class BiomeToggleList extends AbstractWidget {
 private static final int ROW_HEIGHT = 28;
 private static final int ROW_GAP = 2;
 private static final int CONTENT_PAD = 6;
@@ -39,13 +32,15 @@ private static final int SCROLLBAR_PAD = 3;
 
 private final Minecraft minecraft;
 private final List<Row> rows = new ArrayList<>();
+private final Runnable onChange;
 private double scrollAmount;
 private boolean draggingScrollbar;
 
-MarkerToggleList(final Minecraft minecraft, final int x, final int y, final int width, final int height) {
-super(x, y, width, height, Component.translatable("screen.seedatlas_xaero.markers"));
+BiomeToggleList(final Minecraft minecraft, final int x, final int y, final int width, final int height, final List<BiomeSample> biomes, final Runnable onChange) {
+super(x, y, width, height, Component.translatable("screen.seedatlas_xaero.biome_highlights"));
 this.minecraft = minecraft;
-for (MarkerType marker : MarkerType.all()) {
+this.onChange = onChange;
+for (BiomeSample marker : biomes) {
 this.rows.add(new Row(marker));
 }
 }
@@ -221,18 +216,18 @@ this.scrollAmount = Mth.clamp(this.scrollAmount, 0.0D, maxScroll());
 }
 
 private final class Row {
-private final MarkerType marker;
+private final BiomeSample marker;
 private final Button toggle;
 
-private Row(final MarkerType marker) {
+private Row(final BiomeSample marker) {
 this.marker = marker;
 this.toggle = Button.builder(toggleMessage(marker), button -> {
 }).bounds(0, 0, TOGGLE_WIDTH, TOGGLE_HEIGHT).build();
 }
 
 private void toggle() {
-boolean enabled = !SeedAtlasClientState.config().markerEnabled(this.marker.id());
-SeedAtlasClientState.setMarkerEnabled(this.marker.id(), enabled);
+SeedAtlasClientState.toggleHighlightedBiome(this.marker.id());
+BiomeToggleList.this.onChange.run();
 this.toggle.setMessage(toggleMessage(this.marker));
 }
 
@@ -247,31 +242,18 @@ final int mouseX,
 final int mouseY,
 final float partialTick
 ) {
-boolean enabled = SeedAtlasClientState.config().markerEnabled(this.marker.id());
+boolean enabled = SeedAtlasClientState.config().isBiomeHighlighted(this.marker.id());
 int right = x + width;
 int bottom = y + ROW_HEIGHT;
 int background = hovered ? 0x70474747 : (index & 1) == 0 ? 0x301C1C1C : 0x40242424;
 graphics.fill(x, y, right, bottom, background);
 graphics.fill(x, y + 2, x + 2, bottom - 2, enabled ? 0xFF55AA55 : 0xFF555555);
 
-var structureIcon = StructureIcons.get(this.marker.id());
-var layout = structureIcon.layout();
-int iconX = x + 6 + (ICON_SIZE - layout.displayWidth()) / 2;
-int iconY = y + (ROW_HEIGHT - layout.displayHeight()) / 2;
-graphics.blit(
-RenderPipelines.GUI_TEXTURED,
-structureIcon.texture(),
-iconX,
-iconY,
-(float) layout.u(),
-(float) layout.v(),
-layout.displayWidth(),
-layout.displayHeight(),
-layout.width(),
-layout.height(),
-layout.textureWidth(),
-layout.textureHeight()
-);
+int swatchX = x + 7;
+int swatchY = y + (ROW_HEIGHT - 18) / 2;
+graphics.fill(swatchX, swatchY, swatchX + 18, swatchY + 18, 0xFF0A0A0A);
+graphics.fill(swatchX + 1, swatchY + 1, swatchX + 17, swatchY + 17,
+    0xFF000000 | (this.marker.argb() & 0xFFFFFF));
 int toggleX = right - TOGGLE_WIDTH - 4;
 int toggleY = y + (ROW_HEIGHT - TOGGLE_HEIGHT) / 2;
 this.toggle.setMessage(toggleMessage(this.marker));
@@ -281,26 +263,26 @@ this.toggle.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
 int nameX = x + 6 + ICON_SIZE + 8;
 int available = Math.max(0, toggleX - 8 - nameX);
-FormattedCharSequence name = clippedName(this.marker.displayName(), available);
-int nameY = y + (ROW_HEIGHT - MarkerToggleList.this.minecraft.font.lineHeight) / 2;
-graphics.text(MarkerToggleList.this.minecraft.font, name, nameX, nameY, 0xFFFFFFFF);
+FormattedCharSequence name = clippedName(SeedAtlasXaeroIntegration.biomeDisplayName(this.marker.name()), available);
+int nameY = y + (ROW_HEIGHT - BiomeToggleList.this.minecraft.font.lineHeight) / 2;
+graphics.text(BiomeToggleList.this.minecraft.font, name, nameX, nameY, 0xFFFFFFFF);
 }
 
 private FormattedCharSequence clippedName(final Component name, final int availableWidth) {
 if (availableWidth <= 0) {
 return FormattedCharSequence.EMPTY;
 }
-if (MarkerToggleList.this.minecraft.font.width(name) <= availableWidth) {
+if (BiomeToggleList.this.minecraft.font.width(name) <= availableWidth) {
 return name.getVisualOrderText();
 }
 String ellipsis = "...";
-int textWidth = Math.max(0, availableWidth - MarkerToggleList.this.minecraft.font.width(ellipsis));
-FormattedText clipped = MarkerToggleList.this.minecraft.font.substrByWidth(name, textWidth);
+int textWidth = Math.max(0, availableWidth - BiomeToggleList.this.minecraft.font.width(ellipsis));
+FormattedText clipped = BiomeToggleList.this.minecraft.font.substrByWidth(name, textWidth);
 return Language.getInstance().getVisualOrder(FormattedText.composite(clipped, FormattedText.of(ellipsis)));
 }
 }
 
-private static Component toggleMessage(final MarkerType marker) {
-return SeedAtlasSettingsScreen.toggleValue(SeedAtlasClientState.config().markerEnabled(marker.id()));
+private static Component toggleMessage(final BiomeSample marker) {
+return SeedAtlasSettingsScreen.toggleValue(SeedAtlasClientState.config().isBiomeHighlighted(marker.id()));
 }
 }

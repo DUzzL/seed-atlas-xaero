@@ -40,6 +40,35 @@ public final class StructureProgressTest {
             SeedAtlasConfigIO.save(file, loaded);
             loaded = SeedAtlasConfigIO.load(file);
             check(loaded.hideCompletedStructures() && loaded.isCompleted(key), "Filter persists independently");
+            loaded.setBiomeHighlightEnabled(true);
+            loaded.toggleHighlightedBiome(1);
+            loaded.toggleHighlightedBiome(27);
+            check(loaded.highlightedBiomeCount() == 2 && loaded.isBiomeHighlighted(27), "Highlight selection");
+            check(!loaded.highlightSignature().isEmpty(), "An active highlight must invalidate map tiles");
+            SeedAtlasConfigIO.save(file, loaded);
+            loaded = SeedAtlasConfigIO.load(file);
+            check(loaded.biomeHighlightEnabled()
+                && loaded.isBiomeHighlighted(1) && loaded.isBiomeHighlighted(27)
+                && !loaded.isBiomeHighlighted(2), "Highlight selection survives reload");
+            check(loaded.toggleHighlightedBiome(1) && !loaded.isBiomeHighlighted(1), "Unselect a biome");
+            check(loaded.clearHighlightedBiomes() && loaded.highlightedBiomeCount() == 0, "Clear the selection");
+            check(loaded.highlightSignature().isEmpty(), "A cleared highlight must not invalidate map tiles");
+            // These two selections collide under the previous 31-based rolling hash.
+            loaded.addHighlightedBiome(1);
+            loaded.addHighlightedBiome(32);
+            var firstSelection = loaded.highlightSignature();
+            loaded.clearHighlightedBiomes();
+            loaded.addHighlightedBiome(2);
+            loaded.addHighlightedBiome(1);
+            var secondSelection = loaded.highlightSignature();
+            check(!firstSelection.equals(secondSelection), "Different biome sets must invalidate cached colours");
+            loaded.clearHighlightedBiomes();
+            loaded.addHighlightedBiome(1);
+            loaded.addHighlightedBiome(2);
+            check(secondSelection.equals(loaded.highlightSignature()), "Selection order must not rebuild tiles");
+            loaded.setBiomeHighlightEnabled(false);
+            check(loaded.highlightSignature().isEmpty() && loaded.highlightedBiomeCount() == 2,
+                "Disabling restores normal colours but remembers the selection");
             loaded.completedSnapshot().clear();
             check(loaded.isCompleted(key), "Snapshot cannot mutate live progress");
             check(loaded.setCompleted(key, false), "Reopen structure");

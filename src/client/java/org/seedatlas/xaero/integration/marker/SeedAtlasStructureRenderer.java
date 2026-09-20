@@ -3,8 +3,9 @@ package org.seedatlas.xaero.integration.marker;
 import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.List;
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.Identifier;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
+import org.seedatlas.xaero.integration.icon.CompletedBadge;
+import org.seedatlas.xaero.integration.icon.StructureIcons;
 import xaero.lib.client.graphics.XaeroBufferProvider;
 import xaero.map.element.MapElementGraphics;
 import xaero.map.element.render.ElementRenderInfo;
@@ -50,9 +51,14 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
             return;
         }
         this.context.dimension = renderInfo.mapDimension;
-        this.context.updateZoom(renderInfo.scale);
-        this.context.batchedIcons = rendererProvider.getRenderer(CustomRenderTypes.GUI_BILINEAR_PRE);
         Minecraft minecraft = Minecraft.getInstance();
+        this.context.updateZoom(
+            renderInfo.scale,
+            renderInfo.screenSizeBasedScale,
+            Math.min(minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight())
+        );
+        // PNGs use straight alpha. Nearest sampling keeps the original pixel-art edges crisp.
+        this.context.batchedIcons = rendererProvider.getRenderer(CustomRenderTypes.GUI_NEAREST);
         this.source.request(
             this.context,
             renderInfo.mapDimension,
@@ -107,35 +113,40 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
         pose.translate(partialX, partialY, optionalDepth);
         float iconScale = optionalScale * this.context.iconScale;
         pose.scale(iconScale, iconScale, 1.0F);
+        var icon = StructureIcons.get(marker.textureId());
+        var layout = icon.layout();
         if (hovered) {
-            graphics.fill(-11, -11, 11, 11, 0x99000000);
+            // Outline only: keep the map visible through transparent icon pixels.
+            int left = layout.left() - 1, top = layout.top() - 1;
+            int right = layout.right() + 1, bottom = layout.bottom() + 1;
+            int color = 0xBFFFFFFF;
+            graphics.fill(left, top, right, top + 1, color);
+            graphics.fill(left, bottom - 1, right, bottom, color);
+            graphics.fill(left, top + 1, left + 1, bottom - 1, color);
+            graphics.fill(right - 1, top + 1, right, bottom - 1, color);
         }
-        Identifier texture = Identifier.fromNamespaceAndPath(
-            "seedatlas_xaero", "textures/structure/" + marker.textureId() + ".png");
         MapRenderHelper.blitIntoMultiTextureRenderer(
-            pose.last().pose(),
-            this.context.batchedIcons,
-            -10.0F,
-            -10.0F,
-            0,
-            0,
-            20,
-            20,
-            1.0F,
-            1.0F,
-            1.0F,
-            1.0F,
-            20,
-            20,
-            Minecraft.getInstance().getTextureManager().getTexture(texture).getTextureView()
+            pose.last().pose(), this.context.batchedIcons,
+            layout.left(), layout.top(), layout.u(), layout.v(),
+            // Destination size first, then the measured motif: the blit samples exactly the
+            // motif and the padding around it never shrinks the visible icon.
+            layout.displayWidth(), layout.displayHeight(),
+            layout.width(), layout.height(),
+            1.0F, 1.0F, 1.0F, 1.0F, layout.textureWidth(), layout.textureHeight(),
+            Minecraft.getInstance().getTextureManager().getTexture(icon.texture()).getTextureView()
         );
         if (SeedAtlasStructureState.isCompleted(marker)) {
-            // Same batch and zoom as the structure icon, drawn on top at its lower right.
+            // Badge on the lower right corner, drawn right after the icon so it stays on top.
             pose.translate(0.0F, 0.0F, 0.1F);
-            Identifier badge = Identifier.fromNamespaceAndPath("seedatlas_xaero", "textures/structure/completed.png");
-            MapRenderHelper.blitIntoMultiTextureRenderer(pose.last().pose(), this.context.batchedIcons,
-                1.0F, 1.0F, 0, 0, 9, 9, 1.0F, 1.0F, 1.0F, 1.0F, 9, 9,
-                Minecraft.getInstance().getTextureManager().getTexture(badge).getTextureView());
+            MapRenderHelper.blitIntoMultiTextureRenderer(
+                pose.last().pose(), this.context.batchedIcons,
+                CompletedBadge.left(layout), CompletedBadge.top(layout), 0, 0,
+                CompletedBadge.DISPLAY_SIZE, CompletedBadge.DISPLAY_SIZE,
+                CompletedBadge.SOURCE_SIZE, CompletedBadge.SOURCE_SIZE,
+                1.0F, 1.0F, 1.0F, 1.0F,
+                CompletedBadge.SOURCE_SIZE, CompletedBadge.SOURCE_SIZE,
+                Minecraft.getInstance().getTextureManager().getTexture(CompletedBadge.TEXTURE).getTextureView()
+            );
         }
         return false;
     }

@@ -7,6 +7,11 @@ https://github.com/DUzzL/Seed-Atlas at commit
 fc2c628693bc72130d7c16a21636f50d57553ddf. Seed Atlas derives from
 https://github.com/Cubitect/cubiomes-viewer (GPLv3).
 
+The Abandoned Camp markers use their own flat pixel-art tents: the normal camp
+motif follows the approved Seed Atlas-style tent design, and the special-loot
+tent is the same raster in blue. The mineshaft icon was adapted for this mod
+with transparent gaps; the other structure icons retain their original designs.
+
 ## cubiomes
 
 Copyright (c) 2020 Cubitect. The engine derives from cubiomes, licensed under

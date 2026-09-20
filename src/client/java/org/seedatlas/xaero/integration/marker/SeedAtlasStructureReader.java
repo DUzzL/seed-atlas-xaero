@@ -5,6 +5,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
+import org.seedatlas.xaero.integration.icon.CompletedBadge;
+import org.seedatlas.xaero.integration.icon.IconLayout;
+import org.seedatlas.xaero.integration.icon.StructureIcons;
 import xaero.map.gui.IRightClickableElement;
 import xaero.map.gui.dropdown.rightclick.RightClickOption;
 import xaero.lib.client.gui.widget.Tooltip;
@@ -53,56 +56,81 @@ final class SeedAtlasStructureReader extends ElementReader<
     public int getInteractionBoxLeft(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, float partialTicks
     ) {
-        return -10;
+        return boxLeft(marker);
     }
 
     @Override
     public int getInteractionBoxRight(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, float partialTicks
     ) {
-        return 10;
+        return boxRight(marker);
     }
 
     @Override
     public int getInteractionBoxTop(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, float partialTicks
     ) {
-        return -10;
+        return boxTop(marker);
     }
 
     @Override
     public int getInteractionBoxBottom(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, float partialTicks
     ) {
-        return 10;
+        return boxBottom(marker);
     }
 
     @Override
     public int getRenderBoxLeft(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, float partialTicks
     ) {
-        return -11;
+        return boxLeft(marker);
     }
 
     @Override
     public int getRenderBoxRight(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, float partialTicks
     ) {
-        return 11;
+        return boxRight(marker);
     }
 
     @Override
     public int getRenderBoxTop(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, float partialTicks
     ) {
-        return -11;
+        return boxTop(marker);
     }
 
     @Override
     public int getRenderBoxBottom(
         SeedAtlasStructureMarker marker, SeedAtlasStructureContext context, float partialTicks
     ) {
-        return 11;
+        return boxBottom(marker);
+    }
+
+    private static int boxLeft(SeedAtlasStructureMarker marker) {
+        return StructureIcons.get(marker.textureId()).layout().left() - 1;
+    }
+
+    private static int boxTop(SeedAtlasStructureMarker marker) {
+        return StructureIcons.get(marker.textureId()).layout().top() - 1;
+    }
+
+    private static int boxRight(SeedAtlasStructureMarker marker) {
+        IconLayout layout = StructureIcons.get(marker.textureId()).layout();
+        int right = layout.right() + 1;
+        // The completion badge overhangs the icon's lower right corner.
+        return SeedAtlasStructureState.isCompleted(marker)
+            ? Math.max(right, CompletedBadge.right(layout) + 1)
+            : right;
+    }
+
+    private static int boxBottom(SeedAtlasStructureMarker marker) {
+        IconLayout layout = StructureIcons.get(marker.textureId()).layout();
+        int bottom = layout.bottom() + 1;
+        return SeedAtlasStructureState.isCompleted(marker)
+            ? Math.max(bottom, CompletedBadge.bottom(layout) + 1)
+            : bottom;
     }
 
     @Override
