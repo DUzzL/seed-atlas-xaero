@@ -4,11 +4,11 @@ import com.mojang.blaze3d.platform.NativeImage;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
-import net.fabricmc.fabric.api.resource.v1.reloader.SimpleReloadListener;
+import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.packs.PackType;
-import net.minecraft.server.packs.resources.PreparableReloadListener.SharedState;
 import org.seedatlas.xaero.config.MarkerType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,15 +41,13 @@ public final class StructureIcons {
         return icons.getOrDefault(id, DEFAULTS.get("camp"));
     }
 
-    public static void initialize() {
-        ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloadListener(
-            Identifier.fromNamespaceAndPath("seedatlas_xaero", "structure_icons"),
-            new SimpleReloadListener<Map<String, Icon>>() {
+    public static PreparableReloadListener reloadListener() {
+        return new SimplePreparableReloadListener<Map<String, Icon>>() {
                 @Override
-                protected Map<String, Icon> prepare(SharedState state) {
+                protected Map<String, Icon> prepare(ResourceManager resources, ProfilerFiller profiler) {
                     Map<String, Icon> loaded = new HashMap<>();
                     DEFAULTS.forEach((id, fallback) -> {
-                        try (var stream = state.resourceManager().open(fallback.texture());
+                        try (var stream = resources.open(fallback.texture());
                              var image = NativeImage.read(stream)) {
                             loaded.put(id, new Icon(fallback.texture(),
                                 IconLayout.measure(image.getWidth(), image.getHeight(), image::getPixel)));
@@ -62,9 +60,9 @@ public final class StructureIcons {
                 }
 
                 @Override
-                protected void apply(Map<String, Icon> loaded, SharedState state) {
+                protected void apply(Map<String, Icon> loaded, ResourceManager resources, ProfilerFiller profiler) {
                     icons = loaded;
                 }
-            });
+            };
     }
 }

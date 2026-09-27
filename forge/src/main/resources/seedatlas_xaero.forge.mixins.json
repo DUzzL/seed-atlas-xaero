@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "org.seedatlas.xaero.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "GuiMapMixin",
+    "BranchTextureRendererMixin",
+    "BranchRegionTextureMixin",
+    "WorldMapClientOnlyMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "minVersion": "0.8.7"
+}

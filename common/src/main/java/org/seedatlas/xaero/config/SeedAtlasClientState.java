@@ -12,7 +12,6 @@ import java.util.OptionalLong;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ServerData;
@@ -34,7 +33,7 @@ import org.slf4j.LoggerFactory;
 public final class SeedAtlasClientState {
 	private static final Logger LOGGER = LoggerFactory.getLogger("seedatlas_xaero");
 	private static final Object LOCK = new Object();
-	private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("seedatlas_xaero.json");
+	private static Path CONFIG_PATH;
 	private static final AtomicLong REVISION = new AtomicLong();
 	private static final CopyOnWriteArrayList<StateListener> LISTENERS = new CopyOnWriteArrayList<>();
 	private static final WorldContext NO_CONTEXT = new WorldContext("", "");
@@ -51,6 +50,18 @@ public final class SeedAtlasClientState {
 	private SeedAtlasClientState() {
 	}
 
+	/** Called by the loader before the shared client code is initialized. */
+	public static void initialize(final Path configDirectory) {
+		synchronized (LOCK) {
+			Path path = configDirectory.toAbsolutePath().normalize().resolve("seedatlas_xaero.json");
+			if (CONFIG_PATH != null && !CONFIG_PATH.equals(path)) {
+				throw new IllegalStateException("Seed Atlas config directory is already configured");
+			}
+			CONFIG_PATH = path;
+			initialize();
+		}
+	}
+
 	public static void initialize() {
 		if (initialized) {
 			return;
@@ -60,7 +71,7 @@ public final class SeedAtlasClientState {
 				return;
 			}
 			try {
-				config = SeedAtlasConfigIO.load(CONFIG_PATH);
+				config = SeedAtlasConfigIO.load(Objects.requireNonNull(CONFIG_PATH, "Loader must initialize the config directory"));
 			} catch (IOException exception) {
 				LOGGER.error("Could not load {}; using defaults", CONFIG_PATH, exception);
 				config = new SeedAtlasConfig();

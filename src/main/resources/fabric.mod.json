@@ -15,7 +15,7 @@
 	"environment": "client",
 	"entrypoints": {
 		"client": [
-			"org.seedatlas.xaero.SeedAtlasXaero"
+			"org.seedatlas.xaero.fabric.SeedAtlasFabric"
 		]
 	},
 	"mixins": [
@@ -29,6 +29,6 @@
 		"minecraft": "~26.3",
 		"java": ">=25",
 		"fabric-api": "*",
-		"xaeroworldmap": ">=1.46.2 <1.47.0"
+		"xaeroworldmap": "=${xaero_world_map_version}"
 	}
 }

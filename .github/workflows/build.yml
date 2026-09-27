@@ -47,7 +47,7 @@ jobs:
       - name: Test freshly built library through Java FFM
         shell: bash
         run: |
-          cp build/generated/native-resources/natives/${{ matrix.platform }}/seedatlas_xaero.* src/main/resources/natives/${{ matrix.platform }}/
+          cp build/generated/native-resources/natives/${{ matrix.platform }}/seedatlas_xaero.* common/src/main/resources/natives/${{ matrix.platform }}/
           bash ./gradlew nativeSmokeTest --rerun-tasks
       - uses: actions/upload-artifact@v7
         with:
@@ -56,6 +56,9 @@ jobs:
 
   build:
     needs: native
+    strategy:
+      matrix:
+        loader: [fabric, forge, neoforge]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -68,9 +71,19 @@ jobs:
         with:
           pattern: natives-*
           merge-multiple: true
-          path: src/main/resources/natives/
-      - run: bash ./gradlew build
+          path: common/src/main/resources/natives/
+      - name: Build and test loader
+        shell: bash
+        run: |
+          if [ "${{ matrix.loader }}" = "fabric" ]; then
+            bash ./gradlew build
+          else
+            cd "${{ matrix.loader }}"
+            bash ./gradlew build
+          fi
       - uses: actions/upload-artifact@v7
         with:
-          name: seedatlas-xaero-26.3
-          path: build/libs/
+          name: seedatlas-xaero-26.3-${{ matrix.loader }}
+          path: |
+            build/libs/
+            ${{ matrix.loader }}/build/libs/

@@ -23,7 +23,7 @@ public final class IconLayoutTest {
         IconLayout empty = measure(new BufferedImage(19, 20, BufferedImage.TYPE_INT_ARGB));
         check(empty.width() == 19 && empty.height() == 20, "Empty pack textures need valid full UVs");
 
-        Path directory = Path.of("src/main/resources/assets/seedatlas_xaero/textures/structure");
+        Path directory = Path.of("common/src/main/resources/assets/seedatlas_xaero/textures/structure");
         int count = 0;
         try (var files = Files.list(directory)) {
             for (Path path : files.filter(p -> p.toString().endsWith(".png")).sorted().toList()) {

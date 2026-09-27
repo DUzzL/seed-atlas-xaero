@@ -6,6 +6,11 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+// Fabric is built from the repository root; keep its override separate from
+// the shared default read by the standalone Forge and NeoForge builds.
+ext.xaero_world_map_version = providers.gradleProperty('xaero_world_map_version_fabric')
+	.orElse(providers.gradleProperty('xaero_world_map_version')).get()
+
 repositories {
 	maven {
 		name = "Xaero's Maven"
@@ -24,6 +29,9 @@ loom {
 	}
 }
 
+sourceSets.client.java.srcDir 'common/src/main/java'
+sourceSets.main.resources.srcDir 'common/src/main/resources'
+
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -40,10 +48,11 @@ dependencies {
 processResources {
 	def version = project.version
 	inputs.property "version", version
+	inputs.property "xaero_world_map_version", project.xaero_world_map_version
 	exclude "natives/**/*.lib", "natives/**/*.pdb"
 
 	filesMatching("fabric.mod.json") {
-		expand "version": version
+		expand "version": version, "xaero_world_map_version": project.xaero_world_map_version
 	}
 }
 
@@ -160,3 +169,18 @@ tasks.register('biomeHighlightTest', JavaExec) {
 tasks.named('check') {
 	dependsOn tasks.named('biomeHighlightTest')
 }
+
+// Keep the loader-neutral client command tree equivalent across all builds.
+def commandTestClasses = layout.buildDirectory.dir('classes/commandTest')
+tasks.register('compileCommandTest', JavaCompile) {
+    dependsOn tasks.named('clientClasses')
+    source = fileTree('src/testCommands/java') { include '**/*.java' }
+    classpath = sourceSets.client.compileClasspath + sourceSets.client.output
+    destinationDirectory = commandTestClasses
+}
+tasks.register('commandRegistrationTest', JavaExec) {
+    dependsOn tasks.named('compileCommandTest')
+    classpath = files(commandTestClasses) + sourceSets.client.runtimeClasspath
+    mainClass = 'org.seedatlas.xaero.command.CommandRegistrationTest'
+}
+tasks.named('check') { dependsOn tasks.named('commandRegistrationTest') }

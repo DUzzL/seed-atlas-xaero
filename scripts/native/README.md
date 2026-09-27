@@ -17,7 +17,7 @@ The scripts install the result below:
 `build/generated/native-resources/natives/<platform>/`
 
 Before packaging, copy every generated library into the matching directory
-below `src/main/resources/natives/`. The repository CI compiles and tests the
+below `common/src/main/resources/natives/`. The repository CI compiles and tests the
 native source on all four platforms and runs Java FFM regression tests against
 both checked-in and freshly built libraries. The final CI jar uses the freshly
 built libraries from all four runners, preventing stale platform resources.
