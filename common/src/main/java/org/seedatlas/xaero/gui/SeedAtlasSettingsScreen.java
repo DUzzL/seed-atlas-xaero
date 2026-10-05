@@ -134,11 +134,9 @@ public final class SeedAtlasSettingsScreen extends Screen {
 	public void onClose() {
 		this.commitValues();
 		SeedAtlasClientState.save();
-		// Only resume when returning to the world map, not when a nested
-		// settings screen is about to open on top of this one.
-		if (this.parent instanceof GuiMap) {
-			SeedAtlasXaeroIntegration.setHeavyWorkPaused(false);
-		}
+		// Closing the main settings also resumes after /seedatlas settings,
+		// whose parent is null. Nested settings return without calling this.
+		SeedAtlasXaeroIntegration.setHeavyWorkPaused(false);
 		this.minecraft.gui.setScreen(this.parent);
 	}
 
