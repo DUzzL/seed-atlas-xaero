@@ -184,3 +184,18 @@ tasks.register('commandRegistrationTest', JavaExec) {
     mainClass = 'org.seedatlas.xaero.command.CommandRegistrationTest'
 }
 tasks.named('check') { dependsOn tasks.named('commandRegistrationTest') }
+
+// Validate Xaero's mixin targets and captured locals without launching Minecraft.
+def xaeroTestClasses = layout.buildDirectory.dir('classes/xaeroCompatibilityTest')
+tasks.register('compileXaeroCompatibilityTest', JavaCompile) {
+    dependsOn tasks.named('clientClasses')
+    source = fileTree('src/testXaero/java') { include '**/*.java' }
+    classpath = sourceSets.client.compileClasspath + sourceSets.client.output
+    destinationDirectory = xaeroTestClasses
+}
+tasks.register('xaeroCompatibilityTest', JavaExec) {
+    dependsOn tasks.named('compileXaeroCompatibilityTest')
+    classpath = files(xaeroTestClasses) + sourceSets.client.runtimeClasspath
+    mainClass = 'org.seedatlas.xaero.integration.XaeroCompatibilityTest'
+}
+tasks.named('check') { dependsOn tasks.named('xaeroCompatibilityTest') }

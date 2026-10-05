@@ -46,6 +46,7 @@ jar {
 
 // Run the upstream checks against each loader's actual compiled common sources.
 [
+    xaeroCompatibilityTest: ['src/testXaero/java', '**/*.java', 'org.seedatlas.xaero.integration.XaeroCompatibilityTest'],
     commandRegistrationTest: ['src/testCommands/java', '**/*.java', 'org.seedatlas.xaero.command.CommandRegistrationTest'],
     nativeSmokeTest: ['src/main/native/tests', 'BiomeAreaFfmTest.java', 'BiomeAreaFfmTest'],
     progressPersistenceTest: ['src/testProgress/java', '**/*.java', 'org.seedatlas.xaero.config.StructureProgressTest'],
