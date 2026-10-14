@@ -31,7 +31,8 @@ private static final int SCROLLBAR_WIDTH = 6;
 private static final int SCROLLBAR_PAD = 3;
 
 private final Minecraft minecraft;
-private final List<Row> rows = new ArrayList<>();
+private final List<Row> allRows = new ArrayList<>();
+private List<Row> rows = this.allRows;
 private final Runnable onChange;
 private double scrollAmount;
 private boolean draggingScrollbar;
@@ -41,8 +42,16 @@ super(x, y, width, height, Component.translatable("screen.seedatlas_xaero.biome_
 this.minecraft = minecraft;
 this.onChange = onChange;
 for (BiomeSample marker : biomes) {
-this.rows.add(new Row(marker));
+this.allRows.add(new Row(marker));
 }
+}
+
+void setFilter(final String query) {
+String q = query.trim().toLowerCase(java.util.Locale.ROOT);
+this.rows = this.allRows.stream().filter(r -> q.isEmpty()
+|| SeedAtlasXaeroIntegration.biomeDisplayName(r.marker.name()).getString().toLowerCase(java.util.Locale.ROOT).contains(q)
+|| r.marker.name().toLowerCase(java.util.Locale.ROOT).contains(q)).toList();
+this.scrollAmount = 0.0D;
 }
 
 @Override

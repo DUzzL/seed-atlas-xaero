@@ -90,6 +90,7 @@
     "options.seedatlas_xaero.marker_size":  "Marker size: %s",
     "options.seedatlas_xaero.biome_highlights":  "Biome highlights...",
     "options.seedatlas_xaero.highlight_enabled":  "Biome highlighting: %s",
+    "options.seedatlas_xaero.biome_search": "Search biomes...",
     "options.seedatlas_xaero.highlight_clear":  "Clear selection",
     "options.seedatlas_xaero.highlight_select":  "Select biomes (%s) %s",
     "options.seedatlas_xaero.highlight_select_open":  "Select biomes (%s) %s",
