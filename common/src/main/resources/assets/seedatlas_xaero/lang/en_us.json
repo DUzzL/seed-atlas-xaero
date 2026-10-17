@@ -28,6 +28,8 @@
     "options.seedatlas_xaero.prefetch_radius.1":  "Near",
     "options.seedatlas_xaero.prefetch_radius.2":  "Medium",
     "options.seedatlas_xaero.prefetch_radius.3":  "Far",
+    "options.seedatlas_xaero.terrain_style":  "Terrain look: %s",
+    "tooltip.seedatlas_xaero.terrain_style":  "Adds shading, texture and canopy dots to unexplored areas. This is decoration based on biomes, not predicted terrain.",
     "options.seedatlas_xaero.world_type":  "World type: %s",
     "options.seedatlas_xaero.world_type.normal":  "Normal",
     "options.seedatlas_xaero.world_type.large":  "Large Biomes",

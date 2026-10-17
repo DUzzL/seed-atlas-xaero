@@ -4,6 +4,7 @@ import java.util.Set;
 import java.util.ArrayList;
 import org.seedatlas.xaero.integration.StateRevisionTracker;
 import org.seedatlas.xaero.integration.biome.BiomeHighlighter;
+import org.seedatlas.xaero.integration.biome.BiomeTerrainStyler;
 
 /** Verifies the Seed Atlas style highlight colours without opening a Minecraft client. */
 public final class BiomeHighlightTest {
@@ -51,6 +52,33 @@ public final class BiomeHighlightTest {
         check(saturated[0] == 0xFFFFFFFF, "Brightening saturates without wrapping");
         check((saturated[1] >>> 24) == 0x40 && ((saturated[1] >>> 16) & 255) == (saturated[1] & 255),
             "Unknown biome samples stay neutral and preserve alpha");
+        // Terrain styler: deterministic, seam-free across tiles (negative coords), alpha/unknown preserved.
+        int n = 24;
+        short[] fid = new short[n * n];
+        java.util.Arrays.fill(fid, (short) 4);
+        int[] a = new int[n * n];
+        java.util.Arrays.fill(a, 0xC03E6B3E);
+        int[] b = a.clone();
+        BiomeTerrainStyler.apply(a, fid, -20, -36, 2, n, 99L);
+        BiomeTerrainStyler.apply(b, fid, -20, -36, 2, n, 99L);
+        check(java.util.Arrays.equals(a, b), "Terrain styling is deterministic");
+        int[] left = new int[n * n];
+        java.util.Arrays.fill(left, 0xC03E6B3E);
+        BiomeTerrainStyler.apply(left, fid, -20 - n * 2, -36, 2, n, 99L);
+        int[] whole = new int[n * 2 * n * 2];
+        short[] wid = new short[n * 2 * n * 2];
+        java.util.Arrays.fill(wid, (short) 4);
+        java.util.Arrays.fill(whole, 0xC03E6B3E);
+        BiomeTerrainStyler.apply(whole, wid, -20 - n * 2, -36, 2, n * 2, 99L);
+        boolean seam = true;
+        for (int z = 6; z < n - 6; ++z) for (int x = 6; x < n - 6; ++x) seam &= left[z * n + x] == whole[z * n * 2 + x];
+        check(seam, "Tile interiors match a larger tile at the same world position");
+        boolean alphaKept = true;
+        for (int v : a) alphaKept &= (v >>> 24) == 0xC0;
+        check(alphaKept, "Terrain styling preserves alpha");
+        int[] unknown = {0xFF123456};
+        BiomeTerrainStyler.apply(unknown, new short[]{(short) 65535}, 0, 0, 1, 1, 1L);
+        check(unknown[0] == 0xFF123456, "Unknown biome samples keep their colour");
         System.out.println("Biome highlight colour and deferred revision tests passed");
     }
 

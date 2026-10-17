@@ -935,7 +935,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             config.overworldY(),
             config.netherY(),
             config.endY(),
-            config.highlightSignature()
+            config.highlightSignature(),
+            config.terrainStyle()
         );
     }
 
@@ -1077,6 +1078,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         private final long distance;
         private final long sequence;
         private final boolean[] highlightMask;
+        private final boolean terrainStyle;
         private final AtomicBoolean started = new AtomicBoolean();
 
         private TileTask(
@@ -1088,6 +1090,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             this.distance = distance;
             this.sequence = sequence;
             this.highlightMask = SeedAtlasBiomeOverlayRenderer.this.highlightMask;
+            this.terrainStyle = SeedAtlasClientState.config().terrainStyle();
         }
 
         @Override
@@ -1131,6 +1134,12 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 // Highlighting rewrites the samples before the upload, exactly like the
                 // desktop Seed Atlas renderer does while it builds its biome image.
                 BiomeHighlighter.apply(pixels, ids, this.highlightMask);
+                // Focus mode stays flat so highlighted biomes remain readable.
+                if (this.terrainStyle && this.highlightMask.length == 0
+                    && this.key.dimension == Dimension.OVERWORLD) {
+                    BiomeTerrainStyler.apply(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
+                        this.key.sampleStep, this.key.textureSize, this.key.seed);
+                }
                 // Convert once on the worker so the render thread only bulk-uploads.
                 for (int i = 0; i < count; ++i) {
                     pixels[i] = ARGB.toABGR(pixels[i]);
@@ -1490,7 +1499,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         int overworldY,
         int netherY,
         int endY,
-        Set<Integer> highlightSignature
+        Set<Integer> highlightSignature,
+        boolean terrainStyle
     ) {
     }
 }
