@@ -50,6 +50,27 @@ final class SeedAtlasWaypointBridge {
         }
     }
 
+    static void createTemporary(GuiMap map, SeedAtlasStructureMarker marker) {
+        if (!available()) {
+            unavailable(map);
+            return;
+        }
+        try {
+            var processor = map.getMapProcessor();
+            var dimension = processor.getMapWorld().getCurrentDimension();
+            if (dimension == null || !marker.dimension().equals(dimension.getDimId())) {
+                unavailable(map);
+                return;
+            }
+            SupportMods.xaeroMinimap.createTempWaypoint(marker.x(),
+                marker.y() == Integer.MIN_VALUE ? 32767 : marker.y(), marker.z(),
+                dimension.calculateDimScale(processor.getWorldDimensionTypeRegistry()), true);
+        } catch (LinkageError error) {
+            disable(error);
+            unavailable(map);
+        }
+    }
+
     private static void disable(LinkageError error) {
         incompatible = true;
         LOGGER.warn("Disabling optional waypoint integration: World Map's bridge is incompatible", error);

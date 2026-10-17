@@ -98,6 +98,7 @@
     "screen.seedatlas_xaero.biome_highlights.selected":  "%s biomes highlighted",
     "screen.seedatlas_xaero.biome_highlights.no_seed":  "Set a seed first: the biome list comes from the generation engine.",
     "menu.seedatlas_xaero.create_waypoint":  "Create waypoint",
+    "menu.seedatlas_xaero.create_temp_waypoint":  "Create temporary waypoint",
     "message.seedatlas_xaero.waypoint_unavailable":  "Waypoint creation is currently unavailable.",
     "screen.seedatlas_xaero.biome_highlights.disabled": "Highlighting off · %s biomes selected"
 }
