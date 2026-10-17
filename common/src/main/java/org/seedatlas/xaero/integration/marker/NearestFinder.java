@@ -26,7 +26,7 @@ public final class NearestFinder {
         return dimension != null && SeedAtlasStructureMarkerSource.belongsToDimension(type, dimension);
     }
 
-    public static Result structure(MarkerType type, ResourceKey<Level> level, int px, int pz) {
+    public static Result structure(MarkerType type, ResourceKey<Level> level, int px, int pz, boolean skipCompleted) {
         Dimension dimension = SeedAtlasXaeroIntegration.nativeDimension(level);
         if (dimension == null) return null;
         for (int i = 0; i < STRUCTURE_RADII.length; i++) {
@@ -37,6 +37,8 @@ public final class NearestFinder {
             Result best = null;
             if (found != null) {
                 for (SeedAtlasStructureMarker m : found) {
+                    if (skipCompleted && SeedAtlasStructureState.key(m) != null
+                        && SeedAtlasStructureState.isCompleted(m)) continue;
                     int d = distance(m.x(), m.z(), px, pz);
                     if (best == null || d < best.distance) best = new Result(m.x(), m.z(), d, -1);
                 }

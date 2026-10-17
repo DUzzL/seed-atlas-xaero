@@ -106,6 +106,8 @@
     "message.seedatlas_xaero.nearest_searching":  "Searching...",
     "message.seedatlas_xaero.nearest_none":  "None of the selected were found near you (up to 16k blocks for structures, 32k for biomes).",
     "options.seedatlas_xaero.nearest_confirm":  "Confirm (%s)",
+    "options.seedatlas_xaero.nearest_skip_completed":  "Skip completed: %s",
+    "options.seedatlas_xaero.structure_search":  "Search structures...",
     "options.seedatlas_xaero.nearest_waypoint":  "Waypoint: %s",
     "options.seedatlas_xaero.nearest_waypoint.off":  "OFF",
     "options.seedatlas_xaero.nearest_waypoint.temporary":  "Temporary",

@@ -38,7 +38,8 @@ private static final int SCROLLBAR_WIDTH = 6;
 private static final int SCROLLBAR_PAD = 3;
 
 private final Minecraft minecraft;
-private final List<Row> rows = new ArrayList<>();
+private final List<Row> allRows = new ArrayList<>();
+private List<Row> rows = this.allRows;
 private java.util.function.Predicate<MarkerType> isOn = m -> SeedAtlasClientState.config().markerEnabled(m.id());
 private java.util.function.Consumer<MarkerType> flip = m ->
 SeedAtlasClientState.setMarkerEnabled(m.id(), !SeedAtlasClientState.config().markerEnabled(m.id()));
@@ -62,8 +63,16 @@ MarkerToggleList(final Minecraft minecraft, final int x, final int y, final int 
 super(x, y, width, height, Component.translatable("screen.seedatlas_xaero.markers"));
 this.minecraft = minecraft;
 for (MarkerType marker : types) {
-this.rows.add(new Row(marker));
+this.allRows.add(new Row(marker));
 }
+}
+
+void setFilter(final String query) {
+String q = query.trim().toLowerCase(java.util.Locale.ROOT);
+this.rows = this.allRows.stream().filter(r -> q.isEmpty()
+|| r.marker.displayName().getString().toLowerCase(java.util.Locale.ROOT).contains(q)
+|| r.marker.id().contains(q)).toList();
+this.scrollAmount = 0.0D;
 }
 
 @Override

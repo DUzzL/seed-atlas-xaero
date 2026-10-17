@@ -26,6 +26,7 @@ public final class NearestScreen extends Screen {
 	private static final int FOOTER_HEIGHT = 38;
 	// Remembered for the session only.
 	private static MapNavigator.WaypointMode waypointMode = MapNavigator.WaypointMode.TEMPORARY;
+	private static boolean skipCompleted = true;
 
 	private final Screen parent;
 	private final boolean biomeMode;
@@ -59,15 +60,22 @@ public final class NearestScreen extends Screen {
 		int listWidth = Math.min(420, Math.max(180, this.width - margin * 2));
 		listWidth = Math.min(listWidth, this.width - 8);
 		int left = (this.width - listWidth) / 2;
-		int top = this.biomeMode ? 92 : 66;
+		int top = 92;
 		int bottom = Math.min(Math.max(top + 48, this.height - FOOTER_HEIGHT), this.height - 26);
 		int listHeight = Math.max(48, bottom - top);
 
+		int half = (listWidth - 6) / 2;
 		this.addRenderableWidget(Button.builder(waypointMessage(), button -> {
 			var modes = MapNavigator.WaypointMode.values();
 			waypointMode = modes[(waypointMode.ordinal() + 1) % modes.length];
 			button.setMessage(waypointMessage());
-		}).bounds(left, 38, listWidth, 20).build());
+		}).bounds(left, 38, this.biomeMode ? listWidth : half, 20).build());
+		if (!this.biomeMode) {
+			this.addRenderableWidget(Button.builder(skipMessage(), button -> {
+				skipCompleted = !skipCompleted;
+				button.setMessage(skipMessage());
+			}).bounds(left + half + 6, 38, listWidth - half - 6, 20).build());
+		}
 
 		List<BiomeSample> available = SeedAtlasXaeroIntegration.availableBiomes();
 		this.noSeed = available.isEmpty();
@@ -87,6 +95,10 @@ public final class NearestScreen extends Screen {
 				.filter(t -> NearestFinder.appliesTo(t, this.level)).toList();
 			MarkerToggleList list = new MarkerToggleList(this.minecraft, left, top, listWidth, listHeight, types);
 			list.useSelection(this.selectedTypes, this::refresh);
+			EditBox search = new EditBox(this.font, left, 64, listWidth, 20, Component.translatable("options.seedatlas_xaero.biome_search"));
+			search.setHint(Component.translatable("options.seedatlas_xaero.structure_search"));
+			search.setResponder(list::setFilter);
+			this.addRenderableWidget(search);
 			this.addRenderableWidget(list);
 		}
 
@@ -111,6 +123,11 @@ public final class NearestScreen extends Screen {
 			Component.translatable("options.seedatlas_xaero.nearest_waypoint." + waypointMode.name().toLowerCase(Locale.ROOT)));
 	}
 
+	private static Component skipMessage() {
+		return Component.translatable("options.seedatlas_xaero.nearest_skip_completed",
+			SeedAtlasSettingsScreen.toggleValue(skipCompleted));
+	}
+
 	private record Hit(String name, NearestFinder.Result result) { }
 
 	private void start() {
@@ -121,6 +138,7 @@ public final class NearestScreen extends Screen {
 		Set<Integer> wantedBiomes = Set.copyOf(this.selectedBiomes);
 		List<MarkerType> wantedTypes = List.copyOf(this.selectedTypes);
 		List<BiomeSample> known = this.biomes;
+		boolean skip = skipCompleted;
 		Minecraft mc = this.minecraft;
 		Thread thread = new Thread(() -> {
 			Hit hit = null;
@@ -136,7 +154,7 @@ public final class NearestScreen extends Screen {
 					// Structure scans are independent, so run them concurrently.
 					hit = wantedTypes.parallelStream().map(t -> {
 						try {
-							var r = NearestFinder.structure(t, this.level, this.px, this.pz);
+							var r = NearestFinder.structure(t, this.level, this.px, this.pz, skip);
 							return r == null ? null : new Hit(t.displayName().getString(), r);
 						} catch (RuntimeException | LinkageError ignored) {
 							return null; // One failing type must not hide the others.
