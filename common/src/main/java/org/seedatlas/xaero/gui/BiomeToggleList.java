@@ -34,6 +34,8 @@ private final Minecraft minecraft;
 private final List<Row> allRows = new ArrayList<>();
 private List<Row> rows = this.allRows;
 private final Runnable onChange;
+private java.util.function.Predicate<BiomeSample> isOn = m -> SeedAtlasClientState.config().isBiomeHighlighted(m.id());
+private java.util.function.Consumer<BiomeSample> flip = m -> SeedAtlasClientState.toggleHighlightedBiome(m.id());
 private double scrollAmount;
 private boolean draggingScrollbar;
 
@@ -44,6 +46,12 @@ this.onChange = onChange;
 for (BiomeSample marker : biomes) {
 this.allRows.add(new Row(marker));
 }
+}
+
+/** Use a caller-owned selection instead of the saved highlight set. */
+void useSelection(final java.util.Set<Integer> selected) {
+this.isOn = m -> selected.contains(m.id());
+this.flip = m -> { if (!selected.remove(m.id())) selected.add(m.id()); };
 }
 
 void setFilter(final String query) {
@@ -235,7 +243,7 @@ this.toggle = Button.builder(toggleMessage(marker), button -> {
 }
 
 private void toggle() {
-SeedAtlasClientState.toggleHighlightedBiome(this.marker.id());
+BiomeToggleList.this.flip.accept(this.marker);
 BiomeToggleList.this.onChange.run();
 this.toggle.setMessage(toggleMessage(this.marker));
 }
@@ -251,7 +259,7 @@ final int mouseX,
 final int mouseY,
 final float partialTick
 ) {
-boolean enabled = SeedAtlasClientState.config().isBiomeHighlighted(this.marker.id());
+boolean enabled = BiomeToggleList.this.isOn.test(this.marker);
 int right = x + width;
 int bottom = y + ROW_HEIGHT;
 int background = hovered ? 0x70474747 : (index & 1) == 0 ? 0x301C1C1C : 0x40242424;
@@ -291,7 +299,7 @@ return Language.getInstance().getVisualOrder(FormattedText.composite(clipped, Fo
 }
 }
 
-private static Component toggleMessage(final BiomeSample marker) {
-return SeedAtlasSettingsScreen.toggleValue(SeedAtlasClientState.config().isBiomeHighlighted(marker.id()));
+private Component toggleMessage(final BiomeSample marker) {
+return SeedAtlasSettingsScreen.toggleValue(this.isOn.test(marker));
 }
 }

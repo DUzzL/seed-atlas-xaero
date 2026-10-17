@@ -10,9 +10,45 @@ import xaero.map.gui.GuiMap;
 import xaero.map.mods.SupportMods;
 
 /** Uses World Map's own optional integration, never Minimap classes or version strings. */
-final class SeedAtlasWaypointBridge {
+public final class SeedAtlasWaypointBridge {
     private static final Logger LOGGER = LoggerFactory.getLogger("seedatlas_xaero");
     private static boolean incompatible;
+
+    /**
+     * Named waypoint at the exact coordinates in the current waypoint world. Built reflectively
+     * because World Map does not expose Minimap's waypoint classes at compile time.
+     */
+    public static boolean createNamed(int x, int z, String name, boolean temporary) {
+        if (!available()) return false;
+        try {
+            Object support = SupportMods.xaeroMinimap;
+            Object world = support.getClass().getMethod("getWaypointWorld").invoke(support);
+            if (world == null) return false;
+            Class<?> waypointClass = Class.forName("xaero.common.minimap.waypoints.Waypoint");
+            Class<?> colorClass = Class.forName("xaero.hud.minimap.waypoint.WaypointColor");
+            Class<?> purposeClass = Class.forName("xaero.hud.minimap.waypoint.WaypointPurpose");
+            Class<?> worldClass = Class.forName("xaero.hud.minimap.world.MinimapWorld");
+            Object waypoint = waypointClass.getConstructor(int.class, int.class, int.class, String.class,
+                String.class, colorClass, purposeClass, boolean.class, boolean.class).newInstance(
+                x, 32767, z, name, name.isEmpty() ? "X" : name.substring(0, 1).toUpperCase(),
+                colorClass.getMethod("getRandom").invoke(null), purposeClass.getField("NORMAL").get(null),
+                temporary, false);
+            Object set = worldClass.getMethod("getCurrentWaypointSet").invoke(world);
+            set.getClass().getMethod("add", waypointClass).invoke(set, waypoint);
+            if (!temporary) {
+                Object module = Class.forName("xaero.hud.minimap.BuiltInHudModules").getField("MINIMAP").get(null);
+                Object session = module.getClass().getMethod("getCurrentSession").invoke(module);
+                Object io = session.getClass().getMethod("getWorldManagerIO").invoke(session);
+                io.getClass().getMethod("saveWorld", worldClass).invoke(io, world);
+            }
+            SupportMods.xaeroMinimap.requestWaypointsRefresh();
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            LOGGER.warn("Could not create Seed Atlas waypoint", error);
+            return false;
+        }
+    }
+
 
     static boolean available() {
         if (incompatible) return false;
