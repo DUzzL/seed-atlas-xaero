@@ -1,9 +1,11 @@
 package org.seedatlas.xaero.integration.biome;
 
 /**
- * Cosmetic terrain look for seed-only tiles: hill-shaded relief, canopy dots, water depth tones
- * and biome-edge outlines. Relief comes from smooth noise over absolute block coordinates, so
- * adjacent tiles match. It is decoration shaped by the biome, not the real terrain height.
+ * Terrain look for seed-only tiles: hill-shaded relief, canopy dots, water depth tones and
+ * biome-edge outlines. When the native engine supplies height estimates, relief is shaded from
+ * them (an approximation of the 1.18+ terrain offset, not the exact surface: caves, trees,
+ * structures and jagged peaks are not modelled). Otherwise relief falls back to smooth noise
+ * over absolute block coordinates, which is decoration only. Either way adjacent tiles match.
  */
 public final class BiomeTerrainStyler {
     private static final int LIMIT = 256;
@@ -30,10 +32,22 @@ public final class BiomeTerrainStyler {
 
     private BiomeTerrainStyler() { }
 
-    /** Rewrites row-major ARGB samples in place; alpha and biome ids are never changed. */
+    /** Cosmetic-noise relief; see {@link #apply(int[], short[], int, int, int, int, long, float[])}. */
     public static void apply(int[] argb, short[] ids, int originX, int originZ, int step, int size, long seed) {
+        apply(argb, ids, originX, originZ, step, size, seed, null);
+    }
+
+    /**
+     * Rewrites row-major ARGB samples in place; alpha and biome ids are never changed.
+     * {@code heights} is an optional (size+2)^2 block-height grid with a one-sample halo
+     * (its [1,1] entry is sample [0,0]); a missing or wrong-sized grid selects the noise fallback.
+     */
+    public static void apply(int[] argb, short[] ids, int originX, int originZ, int step, int size, long seed,
+                             float[] heights) {
         int count = Math.min(Math.min(argb.length, ids.length), size * size);
         if (count < size * size) return;
+        int hw = size + 2;
+        boolean real = heights != null && heights.length == hw * hw;
         // The engine's biomes are 4x4-block cells, so edges look like stairs. Warp each sample's
         // lookup by smooth noise to make edges organic (about +-5 blocks; none once cells are tiny).
         float warp = 5.0F / step;
@@ -64,10 +78,18 @@ public final class BiomeTerrainStyler {
                 byte kind = KIND[bid];
                 int delta;
                 if (kind == LAND) {
-                    int amp = RELIEF[bid];
-                    // Light from the north-west: slope toward it is bright, away is dark.
-                    float lit = height(wx - d, wz - d, seed) - height(wx + d, wz + d, seed);
-                    delta = Math.round(lit * amp * 3.2F) + Math.round(height(wx, wz, seed) * amp * 0.5F);
+                    if (real) {
+                        // Light from the north-west: slopes facing it (ground rising toward the south-east) are bright.
+                        float slope = (heights[(z + 2) * hw + x + 2] - heights[z * hw + x]) / (2.0F * step);
+                        delta = Math.round(Math.max(-35.0F, Math.min(35.0F, slope * 90.0F)));
+                        // Gentle elevation tint around sea level (about y=63).
+                        delta += Math.round(Math.max(-12.0F, Math.min(12.0F, (heights[(z + 1) * hw + x + 1] - 63.0F) * 0.12F)));
+                    } else {
+                        int amp = RELIEF[bid];
+                        // Light from the north-west: slope toward it is bright, away is dark.
+                        float lit = height(wx - d, wz - d, seed) - height(wx + d, wz + d, seed);
+                        delta = Math.round(lit * amp * 3.2F) + Math.round(height(wx, wz, seed) * amp * 0.5F);
+                    }
                     delta += (int) (hash(wx / step, wz / step, seed) % 9) - 4; // per-block grain
                     if (CANOPY[bid] && step <= 4) {
                         long h = hash(Math.floorDiv(wx, step), Math.floorDiv(wz, step), seed ^ 0x5DEECE66DL);
@@ -76,11 +98,17 @@ public final class BiomeTerrainStyler {
                     }
                     delta -= 14; // Xaero's explored land reads darker and more muted
                 } else {
-                    // Water: broad depth bands plus faint ripples.
-                    float depth = height(wx * 2, wz * 2, seed ^ 0xABCDEFL);
-                    delta = Math.round(depth * (kind == DEEP ? 14 : 9)) - (kind == DEEP ? 10 : 0);
+                    if (real) {
+                        // Water: darker where the estimated floor is further below sea level.
+                        float below = Math.max(0.0F, Math.min(70.0F, 63.0F - heights[(z + 1) * hw + x + 1]));
+                        delta = -16 - Math.round(below * 16.0F / 70.0F) - (kind == DEEP ? 10 : 0);
+                    } else {
+                        // Water: broad depth bands plus faint ripples.
+                        float depth = height(wx * 2, wz * 2, seed ^ 0xABCDEFL);
+                        delta = Math.round(depth * (kind == DEEP ? 14 : 9)) - (kind == DEEP ? 10 : 0);
+                        delta -= 22;
+                    }
                     delta += (int) (hash(wx / step, wz / step, seed) % 5) - 2;
-                    delta -= 22;
                 }
                 // Biome-edge outline: lighter on the north-west side, darker on the south-east.
                 if (x > 0 && z > 0 && (id[i - size - 1] & 0xFFFF) != bid) delta += 14;

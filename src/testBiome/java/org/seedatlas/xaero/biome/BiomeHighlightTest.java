@@ -79,6 +79,30 @@ public final class BiomeHighlightTest {
         int[] unknown = {0xFF123456};
         BiomeTerrainStyler.apply(unknown, new short[]{(short) 65535}, 0, 0, 1, 1, 1L);
         check(unknown[0] == 0xFF123456, "Unknown biome samples keep their colour");
+        // Real heights: with light from the north-west, ground rising toward the south-east is bright.
+        int hn = 8, hw = hn + 2;
+        float[] ramp = new float[hw * hw];
+        for (int z = 0; z < hw; ++z) for (int x = 0; x < hw; ++x) ramp[z * hw + x] = 63 + (x + z) * 6;
+        short[] hid = new short[hn * hn];
+        java.util.Arrays.fill(hid, (short) 4);
+        int[] lit = new int[hn * hn];
+        java.util.Arrays.fill(lit, 0xC03E6B3E);
+        BiomeTerrainStyler.apply(lit, hid, 0, 0, 4, hn, 5L, ramp);
+        int[] shaded = new int[hn * hn];
+        java.util.Arrays.fill(shaded, 0xC03E6B3E);
+        float[] rampAway = new float[hw * hw];
+        for (int i = 0; i < ramp.length; ++i) rampAway[i] = 2 * 63 - ramp[i];
+        BiomeTerrainStyler.apply(shaded, hid, 0, 0, 4, hn, 5L, rampAway);
+        long litSum = 0, shadedSum = 0;
+        for (int i = 0; i < hn * hn; ++i) { litSum += (lit[i] >> 8) & 255; shadedSum += (shaded[i] >> 8) & 255; }
+        check(litSum > shadedSum, "Slopes facing the north-west light are brighter than slopes facing away");
+        check((lit[0] >>> 24) == 0xC0, "Height shading preserves alpha");
+        int[] fallbackA = new int[hn * hn], fallbackB = new int[hn * hn];
+        java.util.Arrays.fill(fallbackA, 0xC03E6B3E);
+        java.util.Arrays.fill(fallbackB, 0xC03E6B3E);
+        BiomeTerrainStyler.apply(fallbackA, hid, 0, 0, 4, hn, 5L);
+        BiomeTerrainStyler.apply(fallbackB, hid, 0, 0, 4, hn, 5L, new float[3]);
+        check(java.util.Arrays.equals(fallbackA, fallbackB), "A wrong-sized height grid falls back to the noise relief");
         System.out.println("Biome highlight colour and deferred revision tests passed");
     }
 

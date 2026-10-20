@@ -166,6 +166,37 @@ public final class SeedAtlasNative implements AutoCloseable {
         }
     }
 
+    /** True when the loaded library can estimate terrain heights (ABI 5+). */
+    public boolean supportsHeights() {
+        return bindings.supportsHeights();
+    }
+
+    /**
+     * Approximate Overworld terrain height in blocks per sample, row-major, for
+     * display shading only (see sax_height_area_sampled). The origin need not be
+     * aligned and may be a halo outside the biome tile.
+     */
+    public float[] heightArea(Dimension dimension, int originBlockX, int originBlockZ,
+                              int sampleStep, int sampleWidth, int sampleHeight) {
+        Objects.requireNonNull(dimension, "dimension");
+        validateArea(sampleStep, sampleWidth, sampleHeight);
+        if (!bindings.supportsHeights()) {
+            throw new NativeException("Native library does not provide terrain heights");
+        }
+        int sampleCount = Math.multiplyExact(sampleWidth, sampleHeight);
+        lifecycleLock.readLock().lock();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment context = context();
+            MemorySegment out = arena.allocate(ValueLayout.JAVA_FLOAT, sampleCount);
+            checkError(bindings.heightAreaSampled(context, dimension.nativeId(),
+                originBlockX, originBlockZ, sampleStep, sampleWidth, sampleHeight,
+                out, sampleCount), "estimate terrain heights");
+            return out.toArray(ValueLayout.JAVA_FLOAT);
+        } finally {
+            lifecycleLock.readLock().unlock();
+        }
+    }
+
     public ScanResult structures(StructureType type, BlockBox box, int maxResults,
                                  boolean biomeCheck) {
         Objects.requireNonNull(type, "type");

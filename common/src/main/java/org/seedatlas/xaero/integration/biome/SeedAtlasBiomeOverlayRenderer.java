@@ -1108,8 +1108,9 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 if (!isCurrent()) {
                     return;
                 }
-                BiomeRegion region = SeedAtlasXaeroIntegration.withSession(session ->
-                    session.biomeArea(
+                float[][] heightsOut = new float[1][];
+                BiomeRegion region = SeedAtlasXaeroIntegration.withSession(session -> {
+                    BiomeRegion biomes = session.biomeArea(
                         this.key.dimension,
                         this.key.originBlockX,
                         this.key.originBlockZ,
@@ -1117,8 +1118,24 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                         this.key.sampleStep,
                         this.key.textureSize,
                         this.key.textureSize
-                    )
-                );
+                    );
+                    if (this.terrainStyle && this.highlightMask.length == 0
+                        && this.key.dimension == Dimension.OVERWORLD && session.supportsHeights()) {
+                        // One-sample halo so slopes at tile edges see their neighbours.
+                        try {
+                            heightsOut[0] = session.heightArea(
+                                this.key.dimension,
+                                this.key.originBlockX - this.key.sampleStep,
+                                this.key.originBlockZ - this.key.sampleStep,
+                                this.key.sampleStep,
+                                this.key.textureSize + 2,
+                                this.key.textureSize + 2);
+                        } catch (RuntimeException ignored) {
+                            heightsOut[0] = null; // biome rendering continues with the noise relief
+                        }
+                    }
+                    return biomes;
+                });
                 if (region == null) {
                     if (isCurrent()) markFailed();
                     return;
@@ -1138,7 +1155,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 if (this.terrainStyle && this.highlightMask.length == 0
                     && this.key.dimension == Dimension.OVERWORLD) {
                     BiomeTerrainStyler.apply(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
-                        this.key.sampleStep, this.key.textureSize, this.key.seed);
+                        this.key.sampleStep, this.key.textureSize, this.key.seed, heightsOut[0]);
                 }
                 // Convert once on the worker so the render thread only bulk-uploads.
                 for (int i = 0; i < count; ++i) {
