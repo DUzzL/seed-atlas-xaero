@@ -87,19 +87,22 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		}).bounds(left + halfWidth + gap, 150, halfWidth, 20)
 			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.terrain_style"))).build());
 
+		// One row of three: a fourth row would overlap the seed status and Done
+		// button at the smallest GUI height (240), e.g. auto scale on 1440p.
+		int thirdWidth = (contentWidth - gap * 2) / 3;
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.biome_highlights"), button -> {
 			this.commitValues();
 			this.minecraft.gui.setScreen(new BiomeHighlightScreen(this));
-		}).bounds(left, 175, contentWidth, 20).build());
+		}).bounds(left, 175, thirdWidth, 20).build());
 
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.go_biome"), button -> {
 			this.commitValues();
 			this.minecraft.gui.setScreen(new NearestScreen(this, true));
-		}).bounds(left, 200, halfWidth, 20).build());
+		}).bounds(left + thirdWidth + gap, 175, thirdWidth, 20).build());
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.go_structure"), button -> {
 			this.commitValues();
 			this.minecraft.gui.setScreen(new NearestScreen(this, false));
-		}).bounds(left + halfWidth + gap, 200, halfWidth, 20).build());
+		}).bounds(left + (thirdWidth + gap) * 2, 175, contentWidth - (thirdWidth + gap) * 2, 20).build());
 
 		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
 			.bounds((this.width - 200) / 2, this.height - 28, 200, 20)
