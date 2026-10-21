@@ -85,6 +85,19 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME seedatlas_xaero_abi COMMAND seedatlas_xaero_test)
 
+    add_executable(nether_reference_test tests/nether_reference_test.c ${SEEDATLAS_ENGINE_SOURCES})
+    target_include_directories(nether_reference_test PRIVATE "${SEEDATLAS_ENGINE_DIR}")
+    target_compile_definitions(nether_reference_test PRIVATE SEEDATLAS_XAERO_BUILD=1)
+    if(MSVC)
+        target_compile_options(nether_reference_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(nether_reference_test PRIVATE -UNDEBUG)
+        if(NOT WIN32)
+            target_link_libraries(nether_reference_test PRIVATE m)
+        endif()
+    endif()
+    add_test(NAME nether_vanilla_26_3 COMMAND nether_reference_test)
+
     add_executable(seedatlas_xaero_benchmark
         tests/seedatlas_xaero_benchmark.c)
     target_include_directories(seedatlas_xaero_benchmark PRIVATE

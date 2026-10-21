@@ -34,6 +34,7 @@ import org.seedatlas.xaero.nativeapi.Dimension;
 import org.joml.Matrix4f;
 import xaero.lib.client.graphics.XaeroBufferProvider;
 import xaero.lib.client.gui.widget.Tooltip;
+import xaero.map.WorldMapSession;
 import xaero.map.element.MapElementGraphics;
 import xaero.map.element.render.ElementReader;
 import xaero.map.element.render.ElementRenderInfo;
@@ -67,6 +68,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     private static final int PENDING_LIMIT = 256;
     private static final int CACHE_LIMIT = 160;
     private static final int READY_LIMIT = 192;
+    private static final int VIEW_TILE_LIMIT = 1024;
     private static final long RETRY_DELAY_NANOS = TimeUnit.SECONDS.toNanos(3);
     private static final long VIEW_RECHECK_NANOS = TimeUnit.MILLISECONDS.toNanos(250);
     private static final long BACKGROUND_RECHECK_NANOS = TimeUnit.SECONDS.toNanos(1);
@@ -93,6 +95,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
     private final AtomicLong generation = new AtomicLong();
     private final AtomicLong taskSequence = new AtomicLong();
+    private final AtomicBoolean refinementRunning = new AtomicBoolean();
+    private volatile boolean coveragePending;
     private final ConcurrentHashMap<TileKey, TileTask> pending = new ConcurrentHashMap<>();
     private final Set<TileKey> readyKeys = ConcurrentHashMap.newKeySet();
     private final PriorityBlockingQueue<CpuTile> readyForUpload =
@@ -110,6 +114,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
     private volatile boolean mapActive;
     private volatile int currentSampleStep = 1;
+    private volatile int netherSurfaceY = 64;
     private volatile GenerationSignature generationSignature;
     /** Empty while highlighting is off; otherwise a 256-entry lookup for the tile workers. */
     private volatile boolean[] highlightMask = new boolean[0];
@@ -218,9 +223,11 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         int viewportWidth,
         int viewportHeight
     ) {
-        if (!this.mapActive || !SeedAtlasXaeroIntegration.isLayerActive()
-            || level == null || viewportWidth <= 0 || viewportHeight <= 0
-            || !Double.isFinite(scale) || scale <= 0.0) {
+        if (viewportWidth <= 0 || viewportHeight <= 0 || !Double.isFinite(scale) || scale <= 0.0) {
+            clearView();
+            return;
+        }
+        if (!this.mapActive || !SeedAtlasXaeroIntegration.isLayerActive() || level == null) {
             return;
         }
         Dimension dimension = SeedAtlasXaeroIntegration.nativeDimension(level);
@@ -234,9 +241,20 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         int textureSize = textureSizeForView(sampleStep, scale);
         int worldSize = Math.multiplyExact(sampleStep, textureSize);
         this.currentSampleStep = sampleStep;
+        int sampleY = SeedAtlasXaeroIntegration.yFor(level);
+        if (dimension == Dimension.NETHER) {
+            var mapSession = WorldMapSession.getCurrentSession();
+            if (mapSession != null && mapSession.getMapProcessor() != null) {
+                sampleY = netherSurfaceY(sampleY, mapSession.getMapProcessor().getCurrentCaveLayer());
+            }
+            this.netherSurfaceY = sampleY;
+        }
 
         double halfWidth = viewportWidth / scale / 2.0;
         double halfHeight = viewportHeight / scale / 2.0;
+        if (!prepareView(cameraX, cameraZ, halfWidth, halfHeight, worldSize)) {
+            return;
+        }
         int minTileX = floorTile(cameraX - halfWidth, worldSize);
         int maxTileX = floorTile(cameraX + halfWidth, worldSize);
         int minTileZ = floorTile(cameraZ - halfHeight, worldSize);
@@ -246,7 +264,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             SeedAtlasClientState.config().largeBiomes(),
             dimension,
             level,
-            SeedAtlasXaeroIntegration.yFor(level),
+            sampleY,
             sampleStep,
             textureSize,
             minTileX,
@@ -277,7 +295,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
      */
     public void tickBackground(Minecraft minecraft) {
         if (minecraft == null || minecraft.level == null || minecraft.player == null
-            || !this.mapActive
+            || !this.mapActive || this.currentView == null
             || SeedAtlasXaeroIntegration.isHeavyWorkPaused()
             || !SeedAtlasXaeroIntegration.isLayerConfigured()) {
             clearBackgroundWork();
@@ -320,7 +338,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                     SeedAtlasClientState.config().largeBiomes(),
                     dimension,
                     level,
-                    SeedAtlasXaeroIntegration.yFor(level),
+                    dimension == Dimension.NETHER ? this.netherSurfaceY : SeedAtlasXaeroIntegration.yFor(level),
                     step,
                     textureSize,
                     centerTileX + dx,
@@ -399,9 +417,10 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             this.context.slices = List.of();
             return;
         }
-        // Focus is an opaque biome map above terrain; normal mode remains underneath it.
+        // Focus is opaque; the optional explored overlay uses the normal opacity.
         boolean focused = this.highlightMask.length != 0;
-        if (aboveTerrain != focused) return;
+        boolean overlayExplored = SeedAtlasClientState.config().overlayExplored();
+        if (aboveTerrain != (focused || overlayExplored)) return;
         Minecraft minecraft = Minecraft.getInstance();
         observeView(dimension, cameraX, cameraZ, scale,
             guiWidth(minecraft), guiHeight(minecraft));
@@ -414,7 +433,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             rendererProvider.getRenderer(CustomRenderTypes.GUI_NEAREST);
         Matrix4f matrix = pose.last().pose();
         float alpha = focused ? 1.0F : SeedAtlasClientState.config().opacityFraction();
-        float depth = focused ? 1.0F : -1.0F;
+        float depth = focused || overlayExplored ? 1.0F : -1.0F;
         for (OverlaySlice slice : this.context.slices) {
             float left = (float)(slice.minX - flooredCameraX);
             float right = (float)(slice.maxX - flooredCameraX);
@@ -565,6 +584,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             .thenComparingLong(TaskRequest::distance));
 
         this.viewportDesired = Set.copyOf(desired);
+        this.coveragePending = requests.stream()
+            .anyMatch(request -> request.category < 2 && !this.textureCache.containsKey(request.key));
         cancelQueuedViewportTasks(gridChanged ? Set.of() : this.viewportDesired);
         pruneReadyViewport(this.viewportDesired);
         for (TaskRequest request : requests) {
@@ -606,7 +627,10 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     }
 
     private void schedule(TileKey key, int category, long distance, long activeGeneration) {
-        if (activeGeneration != this.generation.get() || hasTile(key)
+        GpuTile cached = this.textureCache.get(key);
+        // Cheap coverage first; only visible detailed Overworld tiles need a second pass.
+        boolean refining = shouldRefine(cached != null, cached != null && cached.complete, category, this.coveragePending);
+        if (activeGeneration != this.generation.get() || cached != null && !refining
             || this.readyKeys.contains(key)) {
             return;
         }
@@ -622,7 +646,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         }
 
         TileTask task = new TileTask(
-            key, activeGeneration, category, distance, this.taskSequence.incrementAndGet());
+            key, activeGeneration, category, distance, this.taskSequence.incrementAndGet(), refining);
         TileTask previous = this.pending.putIfAbsent(key, task);
         if (previous != null) {
             if (!previous.started.get() && task.compareTo(previous) < 0
@@ -635,11 +659,20 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         WORKERS.execute(task);
     }
 
-    private boolean hasTile(TileKey key) {
-        if (!Minecraft.getInstance().isSameThread()) {
-            return false;
-        }
-        return this.textureCache.containsKey(key);
+    static boolean acceptUpload(boolean cached, boolean complete, boolean incomingComplete) {
+        return !cached || !complete && incomingComplete;
+    }
+
+    static boolean shouldRefine(boolean cached, boolean complete, int category, boolean coveragePending) {
+        return cached && !complete && category == 1 && !coveragePending;
+    }
+
+    static boolean needsSurfaceRefinement(Dimension dimension, boolean styled, boolean focused, int step) {
+        return dimension == Dimension.OVERWORLD && styled && !focused && step <= 4;
+    }
+
+    static int tilePriority(int category, boolean refining) {
+        return refining ? 3 : category >= 3 ? 4 : category;
     }
 
     private void cancelQueuedViewportTasks(Set<TileKey> desired) {
@@ -720,7 +753,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 break;
             }
             this.readyKeys.remove(cpu.key);
-            if (cpu.generation != this.generation.get() || this.textureCache.containsKey(cpu.key)) {
+            GpuTile old = this.textureCache.get(cpu.key);
+            if (cpu.generation != this.generation.get() || !acceptUpload(old != null, old != null && old.complete, cpu.complete)) {
                 continue;
             }
             DynamicTexture texture = null;
@@ -741,7 +775,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 // Its retained NativeImage is no longer needed for rendering.
                 image.close();
                 image = null;
-                this.textureCache.put(cpu.key, new GpuTile(cpu.key, texture, cpu.biomeIds));
+                this.textureCache.put(cpu.key, new GpuTile(cpu.key, texture, cpu.biomeIds, cpu.complete));
+                if (old != null) old.close();
                 texture = null;
                 ++uploaded;
             } catch (RuntimeException | LinkageError ignored) {
@@ -955,10 +990,21 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         } else {
             automatic = 1024;
         }
+        automatic = coarseSampleStep(automatic, scale);
         automatic = Math.max(
             automatic,
             normalizeConfiguredStep(SeedAtlasClientState.config().biomeResolution()));
         return automatic;
+    }
+
+    /** At distant zoom, sample no more finely than one screen pixel; retain native step limits. */
+    static int coarseSampleStep(int step, double scale) {
+        return step >= 64 && step < 1024 && step * scale < 1.0 ? step * 4 : step;
+    }
+
+    /** Xaero 1.47.1 uses MIN_VALUE for Full cave mode: scan below the Nether roof, not biome Y. */
+    static int netherSurfaceY(int configuredY, int caveLayer) {
+        return caveLayer == Integer.MIN_VALUE ? 127 : configuredY;
     }
 
     private static int normalizeConfiguredStep(int requested) {
@@ -994,6 +1040,38 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     private static int floorTile(double blockCoordinate, int worldSize) {
         long floored = (long)Math.floor(blockCoordinate);
         return (int)Math.floorDiv(floored, worldSize);
+    }
+
+    /** Native samples stop at step 1024; unlimited Xaero zoom must not enumerate an unlimited grid. */
+    boolean prepareView(double cameraX, double cameraZ, double halfWidth, double halfHeight, int worldSize) {
+        double minX = Math.floor((cameraX - halfWidth) / worldSize) - 1;
+        double maxX = Math.floor((cameraX + halfWidth) / worldSize) + 1;
+        double minZ = Math.floor((cameraZ - halfHeight) / worldSize) - 1;
+        double maxZ = Math.floor((cameraZ + halfHeight) / worldSize) + 1;
+        // Check before narrowing coordinates, allocating requests, or constructing parent LODs.
+        if (Double.isFinite(cameraX) && Double.isFinite(cameraZ)
+            && Double.isFinite(halfWidth) && Double.isFinite(halfHeight)
+            && halfWidth >= 0 && halfHeight >= 0
+            && (maxX - minX + 1) * (maxZ - minZ + 1) <= VIEW_TILE_LIMIT
+            && minX * worldSize >= (double)Integer.MIN_VALUE + 2
+            && minZ * worldSize >= (double)Integer.MIN_VALUE + 2
+            && (maxX + 1) * worldSize - 1 <= Integer.MAX_VALUE
+            && (maxZ + 1) * worldSize - 1 <= Integer.MAX_VALUE) {
+            return true;
+        }
+        clearView();
+        return false;
+    }
+
+    private void clearView() {
+        this.currentView = null;
+        this.context.slices = List.of();
+        this.viewportDesired = Set.of();
+        this.backgroundDesired = Set.of();
+        this.lastBackgroundRequest = null;
+        cancelAllQueuedTasks();
+        this.readyForUpload.clear();
+        this.readyKeys.clear();
     }
 
     private static long ringDistance(int dx, int dz) {
@@ -1079,23 +1157,25 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         private final long sequence;
         private final boolean[] highlightMask;
         private final boolean terrainStyle;
+        private final boolean refining;
         private final AtomicBoolean started = new AtomicBoolean();
 
         private TileTask(
-            TileKey key, long generation, int category, long distance, long sequence
+            TileKey key, long generation, int category, long distance, long sequence, boolean refining
         ) {
             this.key = key;
             this.generation = generation;
             this.category = category;
             this.distance = distance;
             this.sequence = sequence;
+            this.refining = refining;
             this.highlightMask = SeedAtlasBiomeOverlayRenderer.this.highlightMask;
             this.terrainStyle = SeedAtlasClientState.config().terrainStyle();
         }
 
         @Override
         public int compareTo(TileTask other) {
-            int byCategory = Integer.compare(this.category, other.category);
+            int byCategory = Integer.compare(tilePriority(this.category, this.refining), tilePriority(other.category, other.refining));
             if (byCategory != 0) return byCategory;
             int byDistance = Long.compare(this.distance, other.distance);
             return byDistance != 0 ? byDistance : Long.compare(this.sequence, other.sequence);
@@ -1104,11 +1184,33 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         @Override
         public void run() {
             this.started.set(true);
+            boolean refinementSlot = false;
             try {
                 if (!isCurrent()) {
                     return;
                 }
+                if (this.refining) {
+                    // Never let all tile workers queue behind the sampler's per-world lock.
+                    if (!SeedAtlasBiomeOverlayRenderer.this.refinementRunning.compareAndSet(false, true)) return;
+                    refinementSlot = true;
+                }
                 float[][] heightsOut = new float[1][];
+                OverworldTerrainSampler.SurfaceGrid surface = null;
+                if (this.refining && this.terrainStyle && this.highlightMask.length == 0
+                    && this.key.dimension == Dimension.OVERWORLD && this.key.sampleStep <= 4) {
+                    try {
+                        surface = OverworldTerrainSampler.sample(this.key.seed, this.key.largeBiomes,
+                            this.key.originBlockX - this.key.sampleStep,
+                            this.key.originBlockZ - this.key.sampleStep, this.key.sampleStep,
+                            this.key.textureSize + 2, this.key.textureSize + 2, this::isCurrent);
+                    } catch (java.util.concurrent.CancellationException cancelled) {
+                        return;
+                    } catch (RuntimeException | LinkageError ignored) {
+                        // Older/incompatible runtime: keep the existing native-height fallback.
+                    }
+                    if (!isCurrent()) return;
+                }
+                boolean hasSurface = surface != null;
                 BiomeRegion region = SeedAtlasXaeroIntegration.withSession(session -> {
                     BiomeRegion biomes = session.biomeArea(
                         this.key.dimension,
@@ -1119,18 +1221,35 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                         this.key.textureSize,
                         this.key.textureSize
                     );
-                    if (this.terrainStyle && this.highlightMask.length == 0
-                        && this.key.dimension == Dimension.OVERWORLD && session.supportsHeights()) {
+                    boolean nether = this.key.dimension == Dimension.NETHER;
+                    if (!hasSurface && this.terrainStyle && this.highlightMask.length == 0 && this.key.sampleStep < 64
+                        && (nether ? session.supportsNetherFloor() && this.key.sampleStep <= 16
+                            : (this.key.dimension == Dimension.OVERWORLD
+                                || this.key.dimension == Dimension.END && this.key.sampleStep <= 8)
+                                && session.supportsHeights())) {
                         // One-sample halo so slopes at tile edges see their neighbours.
                         try {
-                            heightsOut[0] = session.heightArea(
-                                this.key.dimension,
-                                this.key.originBlockX - this.key.sampleStep,
-                                this.key.originBlockZ - this.key.sampleStep,
-                                this.key.sampleStep,
-                                this.key.textureSize + 2,
-                                this.key.textureSize + 2);
-                        } catch (RuntimeException ignored) {
+                            heightsOut[0] = nether
+                                ? session.netherFloorArea(
+                                    this.key.originBlockX - this.key.sampleStep,
+                                    this.key.originBlockZ - this.key.sampleStep,
+                                    this.key.y,
+                                    this.key.sampleStep,
+                                    this.key.textureSize + 2,
+                                    this.key.textureSize + 2,
+                                    // shortcut: coarse masks cost seconds per tile; keep density-only LODs until mask generation is cheaper.
+                                    session.supportsNetherCarving() && this.key.sampleStep <= 4 ? NetherCaveMask.area(this.key.seed,
+                                        this.key.originBlockX - this.key.sampleStep,
+                                        this.key.originBlockZ - this.key.sampleStep, this.key.sampleStep,
+                                        this.key.textureSize + 2, this.key.textureSize + 2) : null)
+                                : session.heightArea(
+                                    this.key.dimension,
+                                    this.key.originBlockX - this.key.sampleStep,
+                                    this.key.originBlockZ - this.key.sampleStep,
+                                    this.key.sampleStep,
+                                    this.key.textureSize + 2,
+                                    this.key.textureSize + 2);
+                        } catch (RuntimeException | LinkageError ignored) {
                             heightsOut[0] = null; // biome rendering continues with the noise relief
                         }
                     }
@@ -1152,10 +1271,27 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 // desktop Seed Atlas renderer does while it builds its biome image.
                 BiomeHighlighter.apply(pixels, ids, this.highlightMask);
                 // Focus mode stays flat so highlighted biomes remain readable.
-                if (this.terrainStyle && this.highlightMask.length == 0
-                    && this.key.dimension == Dimension.OVERWORLD) {
-                    BiomeTerrainStyler.apply(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
-                        this.key.sampleStep, this.key.textureSize, this.key.seed, heightsOut[0]);
+                // Subpixel relief/grain adds CPU work but no useful terrain detail at distant zoom.
+                if (this.terrainStyle && this.highlightMask.length == 0) {
+                    if (surface != null) {
+                        BiomeTerrainStyler.applySurface(pixels, ids, this.key.sampleStep, this.key.textureSize,
+                            surface.heights(), surface.floors(), surface.colors());
+                    } else if (this.key.dimension == Dimension.OVERWORLD) {
+                        BiomeTerrainStyler.applyPreview(pixels, ids, this.key.sampleStep, this.key.textureSize,
+                            heightsOut[0], previewColors(ids, heightsOut[0]));
+                    } else if (this.key.dimension == Dimension.END && this.key.sampleStep < 64) {
+                        // Real island heights; unavailable (coarse zoom, old library) leaves the End flat.
+                        BiomeTerrainStyler.applyEnd(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
+                            this.key.sampleStep, this.key.textureSize, heightsOut[0]);
+                    } else if (this.key.dimension == Dimension.NETHER && heightsOut[0] != null && this.key.sampleStep < 64) {
+                        // Predicted Nether surface for the selected cave view.
+                        BiomeTerrainStyler.applyNether(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
+                            this.key.sampleStep, this.key.textureSize, heightsOut[0]);
+                    } else if (this.key.sampleStep < 64) {
+                        // Coarse Overworld / unavailable sampler: estimated heights or cosmetic fallback.
+                        BiomeTerrainStyler.apply(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
+                            this.key.sampleStep, this.key.textureSize, this.key.seed, heightsOut[0]);
+                    }
                 }
                 // Convert once on the worker so the render thread only bulk-uploads.
                 for (int i = 0; i < count; ++i) {
@@ -1176,19 +1312,56 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                             this.distance,
                             this.sequence,
                             ids,
-                            pixels));
+                            pixels,
+                            this.refining || !needsSurfaceRefinement(this.key.dimension, this.terrainStyle,
+                                this.highlightMask.length != 0, this.key.sampleStep)));
                 }
             } catch (RuntimeException | LinkageError ignored) {
                 if (isCurrent()) markFailed();
             } finally {
+                if (refinementSlot) SeedAtlasBiomeOverlayRenderer.this.refinementRunning.set(false);
                 SeedAtlasBiomeOverlayRenderer.this.pending.remove(this.key, this);
             }
+        }
+
+        private int[] previewColors(short[] ids, float[] heights) {
+            int size = this.key.textureSize;
+            int hw = size + 2;
+            int[] colors = new int[ids.length];
+            String[] names = new String[256];
+            for (short raw : ids) {
+                int id = raw & 0xffff;
+                if (id < names.length && names[id] == null) {
+                    names[id] = SeedAtlasBiomeOverlayRenderer.this.biomeNames.computeIfAbsent(id,
+                        value -> SeedAtlasXaeroIntegration.withSession(session -> session.biomeName(value)));
+                }
+            }
+            boolean hasHeights = heights != null && heights.length == hw * hw;
+            int centre = (this.key.sampleStep - 1) / 2;
+            for (int z = 0; z < size; ++z) for (int x = 0; x < size; ++x) {
+                int i = z * size + x;
+                int id = ids[i] & 0xffff;
+                colors[i] = id >= names.length ? -1 : OverworldTerrainSampler.previewColor(names[id],
+                    this.key.originBlockX + x * this.key.sampleStep + centre,
+                    hasHeights ? Math.round(heights[(z + 1) * hw + x + 1]) : 64,
+                    this.key.originBlockZ + z * this.key.sampleStep + centre, BiomeTerrainStyler.waterBiome(id));
+            }
+            return colors;
         }
 
         private boolean isCurrent() {
             if (this.generation != SeedAtlasBiomeOverlayRenderer.this.generation.get()
                 || !SeedAtlasXaeroIntegration.isLayerConfigured()) {
                 return false;
+            }
+            if (this.refining) {
+                ViewRequest view = SeedAtlasBiomeOverlayRenderer.this.currentView;
+                if (SeedAtlasBiomeOverlayRenderer.this.coveragePending || view == null
+                    || view.sampleStep != this.key.sampleStep || view.textureSize != this.key.textureSize
+                    || this.key.originBlockX < (long)view.minTileX * view.worldSize()
+                    || this.key.originBlockX > (long)view.maxTileX * view.worldSize()
+                    || this.key.originBlockZ < (long)view.minTileZ * view.worldSize()
+                    || this.key.originBlockZ > (long)view.maxTileZ * view.worldSize()) return false;
             }
             if (this.category < 3
                 && !SeedAtlasBiomeOverlayRenderer.this.viewportDesired.contains(this.key)
@@ -1204,7 +1377,9 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             return activeSeed.isPresent()
                 && activeSeed.getAsLong() == this.key.seed
                 && SeedAtlasClientState.config().largeBiomes() == this.key.largeBiomes
-                && SeedAtlasXaeroIntegration.yFor(this.key.level) == this.key.y;
+                && (this.key.dimension == Dimension.NETHER
+                    ? SeedAtlasBiomeOverlayRenderer.this.netherSurfaceY
+                    : SeedAtlasXaeroIntegration.yFor(this.key.level)) == this.key.y;
         }
 
         private void markFailed() {
@@ -1371,11 +1546,13 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         private final TileKey key;
         private final DynamicTexture texture;
         private final short[] biomeIds;
+        private final boolean complete;
 
-        private GpuTile(TileKey key, DynamicTexture texture, short[] biomeIds) {
+        private GpuTile(TileKey key, DynamicTexture texture, short[] biomeIds, boolean complete) {
             this.key = key;
             this.texture = texture;
             this.biomeIds = biomeIds;
+            this.complete = complete;
         }
 
         private boolean contains(int blockX, int blockZ) {
@@ -1417,7 +1594,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         long sequence,
         short[] biomeIds,
         /** NativeImage memory order (ABGR), already converted on the worker. */
-        int[] abgr
+        int[] abgr,
+        boolean complete
     ) {
     }
 

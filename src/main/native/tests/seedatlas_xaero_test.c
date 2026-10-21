@@ -122,8 +122,69 @@ int main(void)
             }
         }
         /* Errors: Nether/End unsupported, bad step, small buffer, no output. */
+        {
+            float end_a[32 * 32], end_b[32 * 32], end_l[16 * 32], end_r[16 * 32];
+            float end_far[16 * 16];
+            float peak = 0.0F, far_peak = 0.0F;
+            assert(sax_height_area_sampled(context, SAX_DIM_END,
+                       -64, -64, 4, 32, 32, end_a, 1024) == SAX_OK);
+            assert(sax_height_area_sampled(context, SAX_DIM_END,
+                       -64, -64, 4, 32, 32, end_b, 1024) == SAX_OK);
+            for (i = 0; i < 1024; ++i) {
+                assert(end_a[i] == end_b[i]);
+                if (end_a[i] > peak) peak = end_a[i];
+            }
+            assert(peak > 30.0F); /* the central island */
+            assert(sax_height_area_sampled(context, SAX_DIM_END,
+                       400, 400, 8, 16, 16, end_far, 256) == SAX_OK);
+            for (i = 0; i < 256; ++i)
+                if (end_far[i] > far_peak) far_peak = end_far[i];
+            assert(far_peak == 0.0F); /* the void between the islands */
+            /* Two adjacent aligned tiles equal one whole tile. */
+            assert(sax_height_area_sampled(context, SAX_DIM_END,
+                       -64, -64, 4, 16, 32, end_l, 512) == SAX_OK);
+            assert(sax_height_area_sampled(context, SAX_DIM_END,
+                       0, -64, 4, 16, 32, end_r, 512) == SAX_OK);
+            for (z = 0; z < 32; ++z) {
+                for (x = 0; x < 16; ++x) {
+                    assert(end_a[z * 32 + x] == end_l[z * 16 + x]);
+                    assert(end_a[z * 32 + x + 16] == end_r[z * 16 + x]);
+                }
+            }
+            assert(sax_height_area_sampled(context, SAX_DIM_END,
+                       -62, -64, 4, 4, 4, hs, 100) == SAX_ERR_ARGUMENT);
+            assert(sax_height_area_sampled(context, SAX_DIM_END,
+                       0, 0, 16, 4, 4, hs, 100) == SAX_ERR_UNSUPPORTED);
+        }
         assert(sax_height_area_sampled(context, SAX_DIM_NETHER,
                    0, 0, 4, 2, 2, hs, 4) == SAX_ERR_UNSUPPORTED);
+        assert((sax_capabilities() & SAX_CAP_NETHER_FLOOR) != 0);
+        {
+            /* Nether floor: deterministic, in range, tile-partition exact. */
+            float na[24 * 24], nb[24 * 24], nl[12 * 24], nr[12 * 24];
+            int lava = 0, rock = 0;
+            assert(sax_nether_floor_area_sampled(context, -48, 16, 64, 1, 24, 24, na, 576) == SAX_OK);
+            assert(sax_nether_floor_area_sampled(context, -48, 16, 64, 1, 24, 24, nb, 576) == SAX_OK);
+            for (i = 0; i < 576; ++i) {
+                assert(na[i] == nb[i]);
+                assert(na[i] >= 0.0F && na[i] <= 64.0F);
+                if (na[i] < 31.0F) ++lava; else ++rock;
+            }
+            assert(lava > 0 && rock > 0); /* both lava sea and raised ground */
+            assert(sax_nether_floor_area_sampled(context, -48, 16, 64, 1, 12, 24, nl, 288) == SAX_OK);
+            assert(sax_nether_floor_area_sampled(context, -36, 16, 64, 1, 12, 24, nr, 288) == SAX_OK);
+            for (z = 0; z < 24; ++z)
+                for (x = 0; x < 12; ++x) {
+                    assert(na[z * 24 + x] == nl[z * 12 + x]);
+                    assert(na[z * 24 + x + 12] == nr[z * 12 + x]);
+                }
+            assert(sax_nether_floor_area_sampled(context, 0, 0, 64, 32, 2, 2, hs, 4) == SAX_ERR_UNSUPPORTED);
+            assert(sax_nether_floor_area_sampled(context, 0, 0, 64, 3, 2, 2, hs, 4) == SAX_ERR_ARGUMENT);
+            assert(sax_nether_floor_area_sampled(context, 0, 0, 64, 4, 2, 2, hs, 3) == SAX_ERR_ARGUMENT);
+            assert(sax_nether_floor_area_sampled(NULL, 0, 0, 64, 4, 2, 2, hs, 4) == SAX_ERR_ARGUMENT);
+            assert(sax_nether_floor_area_sampled(context, 0, 0, 64, 4, 2, 2, NULL, 4) == SAX_ERR_ARGUMENT);
+            assert(sax_nether_floor_area_sampled(context, 0, 0, 64, 4, 8, 8, hs, 100) == SAX_OK);
+        }
         assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
                    0, 0, 3, 2, 2, hs, 4) == SAX_ERR_ARGUMENT);
         assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,

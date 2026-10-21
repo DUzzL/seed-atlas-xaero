@@ -41,6 +41,7 @@ public final class SeedAtlasConfig {
 	private final Set<Integer> highlightedBiomes = new LinkedHashSet<>();
 	private boolean largeBiomes;
 	private boolean terrainStyle = true;
+	private boolean overlayExplored;
 	private int overworldY = DEFAULT_OVERWORLD_Y;
 	private int netherY = DEFAULT_NETHER_Y;
 	private int endY = DEFAULT_END_Y;
@@ -235,6 +236,16 @@ public final class SeedAtlasConfig {
 
 	public synchronized boolean terrainStyle() {
 		return this.terrainStyle;
+	}
+
+	public synchronized boolean overlayExplored() {
+		return this.overlayExplored;
+	}
+
+	synchronized boolean setOverlayExplored(final boolean enabled) {
+		if (this.overlayExplored == enabled) return false;
+		this.overlayExplored = enabled;
+		return true;
 	}
 
 	synchronized boolean setTerrainStyle(final boolean enabled) {
