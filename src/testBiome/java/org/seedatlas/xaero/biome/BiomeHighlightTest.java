@@ -9,6 +9,8 @@ import org.seedatlas.xaero.integration.biome.BiomeTerrainStyler;
 /** Verifies the Seed Atlas style highlight colours without opening a Minecraft client. */
 public final class BiomeHighlightTest {
     public static void main(String[] args) {
+        org.seedatlas.xaero.integration.biome.BiomeViewportTest.run();
+        surfaceStyling();
         int[] argb = {0xFF3E6B3E, 0xFF2C4C6B, 0xFF808080};
         short[] ids = {1, 4, 1};
 
@@ -104,6 +106,91 @@ public final class BiomeHighlightTest {
         BiomeTerrainStyler.apply(fallbackB, hid, 0, 0, 4, hn, 5L, new float[3]);
         check(java.util.Arrays.equals(fallbackA, fallbackB), "A wrong-sized height grid falls back to the noise relief");
         System.out.println("Biome highlight colour and deferred revision tests passed");
+        // End: island slopes are shaded, void (height 0) and unknown samples keep their colour, bad grids are ignored.
+        int en = 6, ew = en + 2;
+        float[] island = new float[ew * ew];
+        for (int z = 0; z < ew; ++z) for (int x = 0; x < ew; ++x) island[z * ew + x] = (x >= 1 && z >= 1 && x <= 6 && z <= 6) ? 40 + (x + z) * 2 : 0;
+        short[] eid = new short[en * en];
+        java.util.Arrays.fill(eid, (short) 9);
+        int[] ecol = new int[en * en];
+        java.util.Arrays.fill(ecol, 0xFFD9D99A);
+        BiomeTerrainStyler.applyEnd(ecol, eid, 0, 0, 4, en, island);
+        check(ecol[2 * en + 2] != 0xFFD9D99A, "End island samples are shaded");
+        float[] voidGrid = new float[ew * ew];
+        int[] vcol = new int[en * en];
+        java.util.Arrays.fill(vcol, 0xFFD9D99A);
+        BiomeTerrainStyler.applyEnd(vcol, eid, 0, 0, 4, en, voidGrid);
+        check(vcol[0] == 0xFFD9D99A && vcol[en * en - 1] == 0xFFD9D99A, "End void keeps its colour");
+        int[] badCol = new int[en * en];
+        java.util.Arrays.fill(badCol, 0xFFD9D99A);
+        BiomeTerrainStyler.applyEnd(badCol, eid, 0, 0, 4, en, new float[3]);
+        BiomeTerrainStyler.applyEnd(badCol, eid, 0, 0, 4, en, null);
+        check(badCol[0] == 0xFFD9D99A, "A missing or wrong-sized End grid leaves the tile flat");
+        check((ecol[2 * en + 2] >>> 24) == 0xFF, "End shading preserves alpha");
+        // Nether: seabed columns (<31) turn lava-orange, ground is slope shaded, bad grids are ignored.
+        float[] ng = new float[ew * ew];
+        for (int z = 0; z < ew; ++z) for (int x = 0; x < ew; ++x) ng[z * ew + x] = x < 4 ? 20 : 60 + x * 3;
+        int[] ncol = new int[en * en];
+        java.util.Arrays.fill(ncol, 0xFF601010);
+        BiomeTerrainStyler.applyNether(ncol, eid, 0, 0, 4, en, ng);
+        check(ncol[0] != 0xFF601010 && (ncol[0] & 0xFF0000) > 0xB00000, "Nether seabed becomes lava");
+        check(ncol[5] != 0xFF601010 && (ncol[5] >>> 24) == 0xFF, "Nether ground is shaded and keeps alpha");
+        int[] nbad = new int[en * en];
+        java.util.Arrays.fill(nbad, 0xFF601010);
+        BiomeTerrainStyler.applyNether(nbad, eid, 0, 0, 4, en, null);
+        check(nbad[0] == 0xFF601010, "A missing Nether grid leaves the tile untouched");
+    }
+
+    private static void surfaceStyling() {
+        int size = 4, width = size + 2;
+        float[] ground = new float[width * width];
+        java.util.Arrays.fill(ground, 64);
+        int[] colors = new int[ground.length];
+        java.util.Arrays.fill(colors, 0x6A7039);
+        int[] pixels = new int[size * size];
+        java.util.Arrays.fill(pixels, 0xA000FFFF);
+        short[] ids = new short[pixels.length];
+        java.util.Arrays.fill(ids, (short) 6);
+        BiomeTerrainStyler.applySurface(pixels, ids, 1, size, ground, ground, colors);
+        for (int pixel : pixels) {
+            check(pixel == pixels[0], "Flat swamp surfaces have no fake canopy or per-pixel grain");
+            check((pixel >>> 24) == 0xA0 && (pixel & 255) < ((pixel >>> 8) & 255),
+                "Surface colours replace cyan with muted swamp green while preserving alpha");
+        }
+        check(colors[width + 1] == 0x6A7039 && ground[width + 1] == 64,
+            "Surface styling does not mutate cached height or colour grids");
+        int[] waterColors = colors.clone();
+        java.util.Arrays.fill(waterColors, 0x3F76E4);
+        float[] shallow = ground.clone(), deep = ground.clone();
+        java.util.Arrays.fill(shallow, 62);
+        java.util.Arrays.fill(deep, 30);
+        int[] shallowPixels = pixels.clone(), deepPixels = pixels.clone();
+        BiomeTerrainStyler.applySurface(shallowPixels, ids, 1, size, ground, shallow, waterColors);
+        BiomeTerrainStyler.applySurface(deepPixels, ids, 1, size, ground, deep, waterColors);
+        check((deepPixels[0] & 255) < (shallowPixels[0] & 255), "Deeper real water columns shade darker");
+        int[] preserved = pixels.clone();
+        ids[0] = (short) 65535;
+        BiomeTerrainStyler.applySurface(preserved, ids, 1, size, ground, ground, waterColors);
+        check(preserved[0] == pixels[0], "Unknown biome samples stay unchanged");
+        int[] bad = pixels.clone();
+        BiomeTerrainStyler.applySurface(bad, ids, 1, size, ground, ground, new int[3]);
+        check(java.util.Arrays.equals(bad, pixels), "Incomplete surface grids do not partially recolour tiles");
+        float[] invalid = ground.clone();
+        invalid[width + 2] = Float.NaN;
+        BiomeTerrainStyler.applySurface(bad, ids, 1, size, invalid, ground, waterColors);
+        check(bad[1] == pixels[1], "Invalid surface heights do not corrupt pixels");
+
+          float[] ramp = ground.clone(), reverse = ground.clone();
+          for (int z = 0; z < width; ++z) for (int x = 0; x < width; ++x) {
+              ramp[z * width + x] = 70 + x + z;
+              reverse[z * width + x] = 70 - x - z;
+          }
+          int[] lit = pixels.clone(), shade = pixels.clone();
+          java.util.Arrays.fill(ids, (short) 4);
+          BiomeTerrainStyler.applySurface(lit, ids, 1, size, ramp, ramp, colors);
+          BiomeTerrainStyler.applySurface(shade, ids, 1, size, reverse, reverse, colors);
+          check((lit[0] & 255) > (shade[0] & 255), "Real surface slopes face the north-west light");
+          check(lit[0] == lit[lit.length - 1], "Halo gives tile-edge slopes the same shading as interiors");
     }
 
     private static void check(boolean condition, String message) {

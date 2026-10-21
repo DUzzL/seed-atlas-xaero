@@ -51,8 +51,14 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		}).bounds(left + halfWidth + gap, 34, halfWidth, 20).build();
 		this.addRenderableWidget(worldType);
 
-		this.opacity = new OpacitySlider(left, 59, contentWidth, config.opacity());
+		this.opacity = new OpacitySlider(left, 59, halfWidth, config.opacity());
 		this.addRenderableWidget(this.opacity);
+		this.addRenderableWidget(Button.builder(overlayMessage(config.overlayExplored()), button -> {
+			boolean enabled = !SeedAtlasClientState.config().overlayExplored();
+			SeedAtlasClientState.setOverlayExplored(enabled);
+			button.setMessage(overlayMessage(enabled));
+		}).bounds(left + halfWidth + gap, 59, halfWidth, 20)
+			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.overlay_explored"))).build());
 
 		int fieldGap = 6;
 		int fieldWidth = (contentWidth - fieldGap * 2) / 3;
@@ -195,6 +201,10 @@ public final class SeedAtlasSettingsScreen extends Screen {
 
 	private static Component terrainStyleMessage(final boolean enabled) {
 		return Component.translatable("options.seedatlas_xaero.terrain_style", toggleValue(enabled));
+	}
+
+	private static Component overlayMessage(final boolean enabled) {
+		return Component.translatable("options.seedatlas_xaero.overlay_explored", toggleValue(enabled));
 	}
 
 	private static Component structuresMessage(final boolean enabled) {

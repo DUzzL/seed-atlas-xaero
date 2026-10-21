@@ -1,0 +1,340 @@
+package org.seedatlas.xaero.integration.biome;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import net.minecraft.SharedConstants;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.data.registries.VanillaRegistries;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
+import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
+import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
+import org.seedatlas.xaero.integration.biome.OverworldTerrainSampler.SurfaceGrid;
+
+/** Standalone vanilla 26.3 base-column checks; no game, world or chunks are constructed. */
+public final class OverworldTerrainSamplerTest {
+    private static final long SEED = 2842062689604764280L;
+    private static HolderLookup.Provider lookup;
+    private static MultiNoiseBiomeSource biomes;
+    private static int parityColumns;
+
+    public static void main(String[] args) throws Exception {
+        invalidAreas();
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        check(SharedConstants.getCurrentVersion().name().equals("26.3"), "Requires Minecraft 26.3");
+        lookup = VanillaRegistries.createWorldLookup();
+        biomes = MultiNoiseBiomeSource.createFromPreset(lookup.lookupOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
+                .getOrThrow(MultiNoiseBiomeSourceParameterLists.OVERWORLD));
+        baseColumnParity();
+        materialCategories();
+        previewPalette();
+        samplingAndHalos();
+        cancellation();
+        isolationAndConcurrentReads();
+        boundedCaches();
+        savedWorldSpots();
+        System.out.println("Overworld sampler: 9 test groups passed; " + parityColumns
+                + " columns match vanilla getBaseColumn/getBaseHeight (normal + large biomes)");
+        if (Arrays.asList(args).contains("--benchmark")) benchmark();
+    }
+
+    private static void invalidAreas() {
+        for (int step : new int[]{Integer.MIN_VALUE, -1, 0, 3, 32, Integer.MAX_VALUE}) {
+            rejects(() -> sample(SEED, false, 0, 0, step, 1, 1), "Invalid step " + step);
+        }
+        for (int size : new int[]{-1, 0, 263, Integer.MAX_VALUE}) {
+            rejects(() -> sample(SEED, false, 0, 0, 1, size, 1), "Invalid width " + size);
+            rejects(() -> sample(SEED, false, 0, 0, 1, 1, size), "Invalid height " + size);
+        }
+        rejects(() -> sample(SEED, false, Integer.MAX_VALUE, 0, 2, 1, 1), "X extent overflow");
+        rejects(() -> sample(SEED, false, 0, Integer.MAX_VALUE, 4, 1, 1), "Z extent overflow");
+        rejects(() -> sample(SEED, false, Integer.MAX_VALUE - 15, 0, 16, 2, 1), "Last cell overflow");
+        cancelled(() -> OverworldTerrainSampler.sample(SEED, false, 0, 0, 1, 1, 1, () -> false));
+    }
+
+    private static void previewPalette() {
+        String[] names = {"plains", "swamp", "desert", "stony_shore", "snowy_beach", "ocean", "beach", "mangrove_swamp", "cherry_grove"};
+        int[] ids = {1, 6, 2, 25, 26, 0, 16, 184, 185};
+        for (int i = 0; i < names.length; ++i) {
+            boolean water = BiomeTerrainStyler.waterBiome(ids[i]);
+            float[] floors = new float[9], top = new float[9];
+            Arrays.fill(floors, water ? 48 : 64);
+            Arrays.fill(top, water ? 62 : 64);
+            int color = OverworldTerrainSampler.previewColor("minecraft:" + names[i], -41, 64, -266, water);
+            check(color == OverworldTerrainSampler.previewColor(names[i], -41, 64, -266, water),
+                "Java namespaced biome names and native bare names resolve identically");
+            check(color >= 0, "Native biome name resolves to the vanilla preview palette: " + names[i]);
+            int[] fullColors = new int[9];
+            Arrays.fill(fullColors, color);
+            int[] detailed = {0xa000ffff};
+            short[] biomeIds = {(short) ids[i]};
+            BiomeTerrainStyler.applySurface(detailed, biomeIds, 1, 1, top, floors, fullColors);
+            for (int step : new int[]{1, 4, 16, 64, 256, 1024}) {
+                int[] preview = {0xa000ffff};
+                BiomeTerrainStyler.applyPreview(preview, biomeIds, step, 1, floors, new int[]{color});
+                check(preview[0] == detailed[0], "Flat preview/detail colours match at LOD " + step + " biome=" + names[i]);
+            }
+        }
+        check(OverworldTerrainSampler.previewColor("not_a_vanilla_biome", 0, 64, 0, false) == -1,
+            "Unknown biomes do not invent preview materials");
+        int[] unknown = {0xa0123456};
+        BiomeTerrainStyler.applyPreview(unknown, new short[]{(short) 65535}, 64, 1, null, new int[]{-1});
+        check(unknown[0] == 0xa0123456, "Unknown preview samples preserve colour and alpha");
+    }
+
+    private static Reference reference(long seed, boolean large) {
+        var settings = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(
+                large ? NoiseGeneratorSettings.LARGE_BIOMES : NoiseGeneratorSettings.OVERWORLD);
+        return new Reference(new NoiseBasedChunkGenerator(biomes, settings),
+                RandomState.create(lookup.lookupOrThrow(Registries.NOISE), seed, settings.value()),
+                LevelHeightAccessor.create(settings.value().noiseSettings().minY(), settings.value().noiseSettings().height()));
+    }
+
+    private static void baseColumnParity() {
+        var random = new Random(0x26_03);
+        for (long seed : new long[]{SEED, 0, -73593}) for (boolean large : new boolean[]{false, true}) {
+            var reference = reference(seed, large);
+            for (int step : new int[]{1, 2, 4, 8, 16}) {
+                int originX = random.nextInt(20001) - 10000;
+                int originZ = random.nextInt(20001) - 10000;
+                var area = sample(seed, large, originX, originZ, step, 3, 2);
+                for (int z = 0; z < 2; ++z) for (int x = 0; x < 3; ++x) {
+                    parity(reference, area, z * 3 + x,
+                            originX + x * step + (step - 1) / 2, originZ + z * step + (step - 1) / 2);
+                }
+            }
+        }
+        // Find named biome categories independently of the implementation, then compare their real columns.
+        var reference = reference(SEED, false);
+        var resolver = biomes.createResolver(reference.state.createClimateSampler(SamplerContext.EMPTY_UNCACHED));
+        var found = new LinkedHashMap<String, int[]>();
+        for (int attempt = 0; attempt < 20000 && found.size() < 4; ++attempt) {
+            int x = random.nextInt(20001) - 10000;
+            int z = random.nextInt(20001) - 10000;
+            var biome = resolver.getNoiseBiome(x >> 2, 16, z >> 2);
+            String id = biome.unwrapKey().orElseThrow().identifier().getPath();
+            String category = id.contains("ocean") ? "ocean" : id.contains("beach") ? "beach"
+                    : id.contains("swamp") ? "swamp" : id.contains("peaks") ? "mountains" : null;
+            if (category != null && !found.containsKey(category)) {
+                var area = sample(SEED, false, x, z, 1, 1, 1);
+                parity(reference, area, 0, x, z);
+                found.put(category, new int[]{x, z});
+                System.out.printf("Category parity: %s biome=%s x=%d z=%d top=%.0f floor=%.0f%n",
+                        category, id, x, z, area.heights()[0], area.floors()[0]);
+            }
+        }
+        check(found.size() == 4, "Parity includes ocean, beach, swamp and mountain biome columns");
+    }
+
+    private static void parity(Reference reference, SurfaceGrid area, int index, int x, int z) {
+        var column = reference.generator.getBaseColumn(x, z, reference.height, reference.state);
+        int top = reference.height.getMinY() - 1;
+        int floor = top;
+        for (int y = reference.height.getMaxY(); y >= reference.height.getMinY(); --y) {
+            var block = column.getBlock(y);
+            if (block.isAir()) continue;
+            if (top < reference.height.getMinY()) top = y;
+            if (block.getFluidState().isEmpty()) { floor = y; break; }
+        }
+        check(area.heights()[index] == top && area.floors()[index] == floor,
+                "Base column parity at " + x + "," + z + " expected=" + top + "/" + floor
+                        + " actual=" + area.heights()[index] + "/" + area.floors()[index]);
+        int baseHeight = reference.generator.getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG,
+                reference.height, reference.state);
+        check(area.heights()[index] == baseHeight - 1, "Base-height first-air conversion at " + x + "," + z);
+        // OCEAN_FLOOR_WG needs datapack block tags; this offline bootstrap checks solid column blocks directly.
+        if (!column.getBlock(top).getFluidState().isEmpty()) {
+            var resolver = biomes.createResolver(reference.state.createClimateSampler(SamplerContext.EMPTY_UNCACHED));
+            int waterColor = resolver.getNoiseBiome(x >> 2, top >> 2, z >> 2).value().getWaterColor() & 0xffffff;
+            check(area.colors()[index] == waterColor, "Actual base fluid uses surface-biome water tint");
+        }
+        check(floor <= top, "Ground cannot exceed visible surface");
+        ++parityColumns;
+    }
+
+    private static void materialCategories() {
+        var registry = lookup.lookupOrThrow(Registries.BIOME);
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.DESERT), 0, 70, 0, false, 63)
+                == 0xd8cf9b, "Desert sand is cream, not grass");
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.BEACH), 0, 64, 0, false, 63)
+                == 0xd8cf9b, "Beach sand is cream");
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.STONY_SHORE), 0, 64, 0, false, 63)
+                == 0x858585, "Stony shore is stone, not sand");
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.SNOWY_PLAINS), 0, 70, 0, false, 63)
+                == 0xe8eff0, "Cold land gets inferred snow");
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.PLAINS), 0, 70, 0, false, 63)
+                == 0x91bd59, "Grass fallback is stable without client colormap resources");
+        var swamp = registry.getOrThrow(Biomes.SWAMP);
+        for (int x : new int[]{-512, 0, 512}) {
+            check(OverworldTerrainSampler.surfaceColor(swamp, x, 63, -266, false, 63)
+                            == (swamp.value().getGrassColor(x, -266) & 0xffffff), "Swamp uses vanilla grass modifier, not fake canopy");
+            check(OverworldTerrainSampler.surfaceColor(swamp, x, 62, -266, true, 63)
+                            == (swamp.value().getWaterColor() & 0xffffff), "Actual fluid gets vanilla biome water tint");
+        }
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.SNOWY_PLAINS), 0, 62, 0, true, 63)
+                        == (registry.getOrThrow(Biomes.SNOWY_PLAINS).value().getWaterColor() & 0xffffff),
+                "Frozen-biome water remains base fluid, not a claim of generated ice");
+    }
+
+    private static void samplingAndHalos() {
+        for (int step : new int[]{1, 2, 4, 8, 16}) {
+            int width = 5, height = 3, originX = -41, originZ = -266;
+            var area = sample(SEED, false, originX, originZ, step, width, height);
+            var halo = sample(SEED, false, originX - step, originZ - step, step, width + 2, height + 2);
+            for (int z = 0; z < height; ++z) for (int x = 0; x < width; ++x) {
+                var block = sample(SEED, false, originX + x * step + (step - 1) / 2,
+                        originZ + z * step + (step - 1) / 2, 1, 1, 1);
+                sameSample(area, z * width + x, block, 0, "LOD lower-centre coordinate step=" + step);
+                sameSample(area, z * width + x, halo, (z + 1) * (width + 2) + x + 1,
+                        "Negative-origin halo consistency step=" + step);
+            }
+        }
+        var reference = reference(SEED, false);
+        for (int phaseZ = 0; phaseZ < 4; ++phaseZ) for (int phaseX = 0; phaseX < 4; ++phaseX) {
+            var phased = sample(SEED, false, -48 + phaseX, -272 + phaseZ, 4, 1, 1);
+            parity(reference, phased, 0, -47 + phaseX, -271 + phaseZ);
+        }
+    }
+
+    private static void isolationAndConcurrentReads() throws Exception {
+        var expected = sample(SEED, false, -64, -272, 4, 13, 9);
+        var large = sample(SEED, true, -64, -272, 4, 13, 9);
+        check(!Arrays.equals(expected.heights(), large.heights()), "Large-biome noise settings affect actual terrain");
+        check(!Arrays.equals(expected.floors(), sample(SEED + 1, false, -64, -272, 4, 13, 9).floors()),
+                "Cache distinguishes seeds");
+        var mutable = sample(SEED, false, -64, -272, 4, 13, 9);
+        Arrays.fill(mutable.heights(), -999);
+        Arrays.fill(mutable.floors(), -999);
+        Arrays.fill(mutable.colors(), -999);
+        sameGrid(expected, sample(SEED, false, -64, -272, 4, 13, 9), "Caller cannot mutate cached arrays");
+        clearCaches();
+        var jobs = new ArrayList<Callable<Void>>();
+        for (int thread = 0; thread < 4; ++thread) {
+            final boolean mode = (thread & 1) != 0;
+            jobs.add(() -> {
+                for (int repeat = 0; repeat < 5; ++repeat) {
+                    sameGrid(mode ? large : expected, sample(SEED, mode, -64, -272, 4, 13, 9),
+                            "Concurrent cold generation and warm reads");
+                }
+                return null;
+            });
+        }
+        try (var executor = Executors.newFixedThreadPool(4)) {
+            for (var result : executor.invokeAll(jobs)) result.get();
+        }
+    }
+
+    private static void cancellation() throws Exception {
+        clearCaches();
+        var checks = new AtomicInteger();
+        cancelled(() -> OverworldTerrainSampler.sample(SEED, false, 0, 0, 1, 33, 2,
+                () -> checks.incrementAndGet() < 3));
+        check(checks.get() == 3 && cache("CACHE").size() == 1, "Cancellation stops before the next density batch");
+        checks.set(0);
+        cancelled(() -> OverworldTerrainSampler.sample(SEED, false, 0, 0, 1, 1, 2,
+                () -> checks.incrementAndGet() < 2));
+        check(checks.get() == 2 && cache("CACHE").size() == 1, "Cached reads also check cancellation each row");
+    }
+
+    private static void boundedCaches() throws Exception {
+        clearCaches();
+        var expected = sample(SEED, false, -200, 14, 1, 1, 1);
+        for (int tile = 0; tile < 513; ++tile) sample(SEED, false, tile * 16, 0, 1, 1, 1);
+        check(cache("CACHE").size() == 512, "Spatial cache bounded at 512 tiles");
+        sameGrid(expected, sample(SEED, false, -200, 14, 1, 1, 1), "Eviction regenerates identically");
+        for (int seed = 0; seed < 3; ++seed) sample(seed, false, 0, 0, 1, 1, 1);
+        check(cache("CACHE").size() == 512, "All seeds and modes share the tile bound");
+        check(cache("CONTEXTS").size() == 2, "Mutable vanilla generation contexts bounded at two");
+        var max = sample(SEED, false, -262, -262, 1, 262, 262);
+        check(max.heights().length == 262 * 262 && max.floors().length == max.colors().length,
+                "Maximum halo dimensions preserve row-major array lengths");
+    }
+
+    private static void savedWorldSpots() {
+        var reference = reference(SEED, false);
+        // Read-only parent observations are context, not post-features parity assertions.
+        for (int[] spot : new int[][]{{-41, -266, 63}, {-32, -256, 64}, {-64, -256, 68},
+                {0, -256, 62}, {-170, 14, 67}, {0, 0, 62}}) {
+            var area = sample(SEED, false, spot[0], spot[1], 1, 1, 1);
+            parity(reference, area, 0, spot[0], spot[1]);
+            System.out.printf("Saved-world spot (%d,%d): base top=%.0f floor=%.0f RGB=%06x; observed ground/water Y=%d%n",
+                    spot[0], spot[1], area.heights()[0], area.floors()[0], area.colors()[0], spot[2]);
+        }
+    }
+
+    private static void benchmark() throws Exception {
+        System.out.printf("Sampler benchmark: MC=26.3 seed=%d largeBiomes=false origin=(-256,-256) size=258x258"
+                        + " Java=%s arch=%s cache=512 tiles contexts=2%n",
+                SEED, System.getProperty("java.version"), System.getProperty("os.arch"));
+        for (int step : new int[]{1, 2, 4}) {
+            clearCaches();
+            long start = System.nanoTime();
+            var cold = sample(SEED, false, -256, -256, step, 258, 258);
+            double coldMs = (System.nanoTime() - start) / 1e6;
+            start = System.nanoTime();
+            var warm = sample(SEED, false, -256, -256, step, 258, 258);
+            double warmMs = (System.nanoTime() - start) / 1e6;
+            sameGrid(cold, warm, "Benchmark determinism");
+            System.out.printf(Locale.ROOT, "step=%d cold=%.1fms warm=%.1fms tiles=%d heightsHash=%d floorsHash=%d colorsHash=%d%n",
+                    step, coldMs, warmMs, cache("CACHE").size(), Arrays.hashCode(cold.heights()),
+                    Arrays.hashCode(cold.floors()), Arrays.hashCode(cold.colors()));
+        }
+    }
+
+    private static SurfaceGrid sample(long seed, boolean large, int x, int z, int step, int width, int height) {
+        return OverworldTerrainSampler.sample(seed, large, x, z, step, width, height);
+    }
+
+    private static void sameGrid(SurfaceGrid a, SurfaceGrid b, String message) {
+        check(Arrays.equals(a.heights(), b.heights()) && Arrays.equals(a.floors(), b.floors())
+                && Arrays.equals(a.colors(), b.colors()), message);
+    }
+
+    private static void sameSample(SurfaceGrid a, int ai, SurfaceGrid b, int bi, String message) {
+        check(a.heights()[ai] == b.heights()[bi] && a.floors()[ai] == b.floors()[bi]
+                && a.colors()[ai] == b.colors()[bi], message);
+    }
+
+    private static Map<?, ?> cache(String name) throws Exception {
+        var field = OverworldTerrainSampler.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return (Map<?, ?>) field.get(null);
+    }
+
+    private static void clearCaches() throws Exception {
+        cache("CACHE").clear();
+        cache("CONTEXTS").clear();
+    }
+
+    private record Reference(NoiseBasedChunkGenerator generator, RandomState state, LevelHeightAccessor height) { }
+
+    private static void rejects(Runnable action, String message) {
+        try { action.run(); } catch (IllegalArgumentException expected) { return; }
+        throw new AssertionError(message);
+    }
+
+    private static void cancelled(Runnable action) {
+        try { action.run(); } catch (CancellationException expected) { return; }
+        throw new AssertionError("Stale sampling must throw CancellationException");
+    }
+
+    private static void check(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+}
