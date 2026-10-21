@@ -4,6 +4,7 @@ import java.util.Comparator;
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
@@ -13,7 +14,7 @@ import org.seedatlas.xaero.nativeapi.BiomeSample;
 
 /** Biome focus selector, laid out like MarkerSettingsScreen. */
 public final class BiomeHighlightScreen extends Screen {
-    private static final int HEADER_HEIGHT = 68;
+    private static final int HEADER_HEIGHT = 92;
     private static final int FOOTER_HEIGHT = 38;
     private final Screen parent;
     private List<BiomeSample> biomes = List.of();
@@ -42,14 +43,18 @@ public final class BiomeHighlightScreen extends Screen {
         this.highlightButton = this.addRenderableWidget(Button.builder(highlightSwitchMessage(), button -> {
             SeedAtlasClientState.setBiomeHighlightEnabled(!SeedAtlasClientState.config().biomeHighlightEnabled());
             refreshLabels();
-        }).bounds(left, 40, halfWidth, 20).build());
+        }).bounds(left, 36, halfWidth, 20).build());
         this.clearButton = this.addRenderableWidget(Button.builder(
             Component.translatable("options.seedatlas_xaero.highlight_clear"), button -> {
                 SeedAtlasClientState.clearHighlightedBiomes();
                 refreshLabels();
-            }).bounds(left + halfWidth + 6, 40, listWidth - halfWidth - 6, 20).build());
-        this.addRenderableWidget(new BiomeToggleList(this.minecraft, left, HEADER_HEIGHT,
-            listWidth, listHeight, this.biomes, this::refreshLabels));
+            }).bounds(left + halfWidth + 6, 36, listWidth - halfWidth - 6, 20).build());
+        BiomeToggleList list = new BiomeToggleList(this.minecraft, left, HEADER_HEIGHT, listWidth, listHeight, this.biomes, this::refreshLabels);
+        EditBox search = new EditBox(this.font, left, 62, listWidth, 20, Component.translatable("options.seedatlas_xaero.biome_search"));
+        search.setHint(Component.translatable("options.seedatlas_xaero.biome_search"));
+        search.setResponder(list::setFilter);
+        this.addRenderableWidget(search);
+        this.addRenderableWidget(list);
         refreshLabels();
 
         int doneWidth = Math.min(200, Math.max(120, this.width - 24));

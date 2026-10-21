@@ -85,6 +85,15 @@ public final class SeedAtlasSettingsScreen extends Screen {
 			this.minecraft.gui.setScreen(new BiomeHighlightScreen(this));
 		}).bounds(left, 175, contentWidth, 20).build());
 
+		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.go_biome"), button -> {
+			this.commitValues();
+			this.minecraft.gui.setScreen(new NearestScreen(this, true));
+		}).bounds(left, 200, halfWidth, 20).build());
+		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.go_structure"), button -> {
+			this.commitValues();
+			this.minecraft.gui.setScreen(new NearestScreen(this, false));
+		}).bounds(left + halfWidth + gap, 200, halfWidth, 20).build());
+
 		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
 			.bounds((this.width - 200) / 2, this.height - 28, 200, 20)
 			.build());

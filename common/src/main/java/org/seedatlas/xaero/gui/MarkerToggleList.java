@@ -38,16 +38,41 @@ private static final int SCROLLBAR_WIDTH = 6;
 private static final int SCROLLBAR_PAD = 3;
 
 private final Minecraft minecraft;
-private final List<Row> rows = new ArrayList<>();
+private final List<Row> allRows = new ArrayList<>();
+private List<Row> rows = this.allRows;
+private java.util.function.Predicate<MarkerType> isOn = m -> SeedAtlasClientState.config().markerEnabled(m.id());
+private java.util.function.Consumer<MarkerType> flip = m ->
+SeedAtlasClientState.setMarkerEnabled(m.id(), !SeedAtlasClientState.config().markerEnabled(m.id()));
 private double scrollAmount;
 private boolean draggingScrollbar;
 
 MarkerToggleList(final Minecraft minecraft, final int x, final int y, final int width, final int height) {
+this(minecraft, x, y, width, height, MarkerType.all());
+}
+
+/** Use a caller-owned selection instead of the saved marker toggles. */
+void useSelection(final java.util.Set<MarkerType> selected, final Runnable onChange) {
+this.isOn = selected::contains;
+this.flip = m -> {
+if (!selected.remove(m)) selected.add(m);
+onChange.run();
+};
+}
+
+MarkerToggleList(final Minecraft minecraft, final int x, final int y, final int width, final int height, final List<MarkerType> types) {
 super(x, y, width, height, Component.translatable("screen.seedatlas_xaero.markers"));
 this.minecraft = minecraft;
-for (MarkerType marker : MarkerType.all()) {
-this.rows.add(new Row(marker));
+for (MarkerType marker : types) {
+this.allRows.add(new Row(marker));
 }
+}
+
+void setFilter(final String query) {
+String q = query.trim().toLowerCase(java.util.Locale.ROOT);
+this.rows = this.allRows.stream().filter(r -> q.isEmpty()
+|| r.marker.displayName().getString().toLowerCase(java.util.Locale.ROOT).contains(q)
+|| r.marker.id().contains(q)).toList();
+this.scrollAmount = 0.0D;
 }
 
 @Override
@@ -231,8 +256,7 @@ this.toggle = Button.builder(toggleMessage(marker), button -> {
 }
 
 private void toggle() {
-boolean enabled = !SeedAtlasClientState.config().markerEnabled(this.marker.id());
-SeedAtlasClientState.setMarkerEnabled(this.marker.id(), enabled);
+MarkerToggleList.this.flip.accept(this.marker);
 this.toggle.setMessage(toggleMessage(this.marker));
 }
 
@@ -247,7 +271,7 @@ final int mouseX,
 final int mouseY,
 final float partialTick
 ) {
-boolean enabled = SeedAtlasClientState.config().markerEnabled(this.marker.id());
+boolean enabled = MarkerToggleList.this.isOn.test(this.marker);
 int right = x + width;
 int bottom = y + ROW_HEIGHT;
 int background = hovered ? 0x70474747 : (index & 1) == 0 ? 0x301C1C1C : 0x40242424;
@@ -300,7 +324,7 @@ return Language.getInstance().getVisualOrder(FormattedText.composite(clipped, Fo
 }
 }
 
-private static Component toggleMessage(final MarkerType marker) {
-return SeedAtlasSettingsScreen.toggleValue(SeedAtlasClientState.config().markerEnabled(marker.id()));
+private Component toggleMessage(final MarkerType marker) {
+return SeedAtlasSettingsScreen.toggleValue(this.isOn.test(marker));
 }
 }
