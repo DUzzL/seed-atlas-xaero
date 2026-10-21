@@ -7,7 +7,10 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 
 final class NativeBindings {
-    static final int EXPECTED_ABI = 4;
+    static final int EXPECTED_ABI = 5;
+    /** ABI 4 libraries still load for biomes/structures but cannot supply heights. */
+    static final int MIN_ABI = 4;
+    static final int CAP_HEIGHTS = 1 << 9;
 
     private final NativeLibraryLoader.LoadedNative library;
     private final MethodHandle abiVersion;
@@ -19,6 +22,7 @@ final class NativeBindings {
     private final MethodHandle biomeChunk;
     private final MethodHandle biomeChunkSampled;
     private final MethodHandle biomeAreaSampled;
+    private final MethodHandle heightAreaSampled;
     private final MethodHandle biomeName;
     private final MethodHandle biomeColor;
     private final MethodHandle scanStructures;
@@ -74,16 +78,44 @@ final class NativeBindings {
             ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
             ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
             ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        // Optional: absent from ABI 4 libraries, and only used when the capability bit is set.
+        heightAreaSampled = symbols.find("sax_height_area_sampled")
+            .map(symbol -> java.lang.foreign.Linker.nativeLinker().downcallHandle(symbol,
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT)))
+            .orElse(null);
     }
 
     static NativeBindings load() {
         NativeBindings bindings = new NativeBindings(NativeLibraryLoader.load());
         int abi = bindings.abiVersion();
-        if (abi != EXPECTED_ABI) {
-            throw new NativeException("Native ABI mismatch: Java expects " + EXPECTED_ABI
+        if (abi < MIN_ABI || abi > EXPECTED_ABI) {
+            throw new NativeException("Native ABI mismatch: Java expects " + MIN_ABI + ".."
+                + EXPECTED_ABI
                 + " but library provides " + abi);
         }
         return bindings;
+    }
+
+    boolean supportsHeights() {
+        return heightAreaSampled != null && abiVersion() >= 5
+            && (capabilities() & CAP_HEIGHTS) != 0;
+    }
+
+    int heightAreaSampled(MemorySegment context, int dimension, int originBlockX,
+                          int originBlockZ, int sampleStep, int sampleWidth,
+                          int sampleHeight, MemorySegment heights, int capacity) {
+        if (heightAreaSampled == null) {
+            throw new NativeException("Native library does not provide terrain heights");
+        }
+        try {
+            return (int) heightAreaSampled.invokeExact(context, dimension, originBlockX,
+                originBlockZ, sampleStep, sampleWidth, sampleHeight, heights, capacity);
+        } catch (Throwable error) {
+            throw callFailure("sax_height_area_sampled", error);
+        }
     }
 
     String platform() {

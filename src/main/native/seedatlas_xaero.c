@@ -163,12 +163,12 @@ SAX_API uint32_t sax_capabilities(void)
     return SAX_CAP_BIOMES | SAX_CAP_STRUCTURES | SAX_CAP_STRONGHOLDS |
            SAX_CAP_SPAWN | SAX_CAP_SLIME | SAX_CAP_ORE_VEINS |
            SAX_CAP_END_SHIPS | SAX_CAP_BIOME_SAMPLING |
-           SAX_CAP_BIOME_AREAS;
+           SAX_CAP_BIOME_AREAS | SAX_CAP_HEIGHTS;
 }
 
 SAX_API int32_t sax_engine_version(char *out, int32_t capacity)
 {
-    return copy_string("seedatlas-engine MC 26.3 / ABI 4", out, capacity);
+    return copy_string("seedatlas-engine MC 26.3 / ABI 5", out, capacity);
 }
 
 SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags)
@@ -484,6 +484,101 @@ SAX_API int32_t sax_biome_area_sampled(
 
     free(cache);
     return SAX_OK;
+}
+
+static int64_t floor_div64(int64_t value, int64_t divisor)
+{
+    int64_t quotient = value / divisor;
+    return quotient - ((value % divisor) < 0);
+}
+
+/* Engine depth parameter at a quart coordinate on the engine's own block scale
+   (same scale as the engine's mapApproxHeight). */
+static float height_at_quart(const BiomeNoise *bn, int32_t qx, int32_t qz)
+{
+    int64_t np[NP_MAX];
+    sampleBiomeNoise(bn, np, qx, 0, qz, NULL, SAMPLE_NO_BIOME);
+    return (float) (np[NP_DEPTH] / 76.0);
+}
+
+SAX_API int32_t sax_height_area_sampled(
+    const sax_context *context, int32_t dimension,
+    int32_t origin_block_x, int32_t origin_block_z,
+    int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    float *out_heights, int32_t output_capacity)
+{
+    const BiomeNoise *bn;
+    int64_t sample_count, last_x, last_z;
+    int32_t x, z;
+
+    if (!out_heights || !sample_step_valid(sample_step) ||
+        sample_width <= 0 || sample_height <= 0 || output_capacity < 0 ||
+        !context_valid(context) || !dimension_valid(dimension))
+        return SAX_ERR_ARGUMENT;
+    if (dimension != SAX_DIM_OVERWORLD)
+        return SAX_ERR_UNSUPPORTED;
+    sample_count = (int64_t) sample_width * sample_height;
+    if (sample_count > SAX_MAX_BIOME_AREA_SAMPLES)
+        return SAX_ERR_RANGE_TOO_LARGE;
+    if (output_capacity < sample_count)
+        return SAX_ERR_ARGUMENT;
+    last_x = (int64_t) origin_block_x + (int64_t) sample_width * sample_step - 1;
+    last_z = (int64_t) origin_block_z + (int64_t) sample_height * sample_step - 1;
+    if (last_x > INT32_MAX || last_z > INT32_MAX)
+        return SAX_ERR_RANGE_TOO_LARGE;
+    bn = &context->biome_generators[0].bn;
+
+    if (sample_step >= 4) {
+        for (z = 0; z < sample_height; ++z) {
+            int64_t bz = (int64_t) origin_block_z + (int64_t) z * sample_step +
+                         sample_step / 2;
+            for (x = 0; x < sample_width; ++x) {
+                int64_t bx = (int64_t) origin_block_x +
+                             (int64_t) x * sample_step + sample_step / 2;
+                out_heights[(int64_t) z * sample_width + x] = height_at_quart(
+                    bn, (int32_t) floor_div64(bx, 4), (int32_t) floor_div64(bz, 4));
+            }
+        }
+        return SAX_OK;
+    }
+    else {
+        /* Cell q covers blocks 4q..4q+3 with its centre at 4q+2. Positions are
+           kept in eighths of a cell: p = 2*block + step - 4 is the cell-centre
+           relative position of the sample centre. */
+        int64_t px0 = 2LL * origin_block_x + sample_step - 4;
+        int64_t pz0 = 2LL * origin_block_z + sample_step - 4;
+        int64_t qx0 = floor_div64(px0, 8);
+        int64_t qz0 = floor_div64(pz0, 8);
+        int64_t qx1 = floor_div64(px0 + 2LL * (sample_width - 1) * sample_step, 8) + 1;
+        int64_t qz1 = floor_div64(pz0 + 2LL * (sample_height - 1) * sample_step, 8) + 1;
+        int64_t lw = qx1 - qx0 + 1, lh = qz1 - qz0 + 1;
+        int64_t i, j;
+        float *lattice = (float *) malloc((size_t) (lw * lh) * sizeof(*lattice));
+        if (!lattice)
+            return SAX_ERR_ALLOCATION;
+        for (j = 0; j < lh; ++j)
+            for (i = 0; i < lw; ++i)
+                lattice[j * lw + i] = height_at_quart(
+                    bn, (int32_t) (qx0 + i), (int32_t) (qz0 + j));
+        for (z = 0; z < sample_height; ++z) {
+            int64_t pz = pz0 + 2LL * z * sample_step;
+            int64_t cz = floor_div64(pz, 8) - qz0;
+            float tz = (float) (pz - (cz + qz0) * 8) / 8.0F;
+            for (x = 0; x < sample_width; ++x) {
+                int64_t px = px0 + 2LL * x * sample_step;
+                int64_t cx = floor_div64(px, 8) - qx0;
+                float tx = (float) (px - (cx + qx0) * 8) / 8.0F;
+                float a = lattice[cz * lw + cx], b = lattice[cz * lw + cx + 1];
+                float c = lattice[(cz + 1) * lw + cx];
+                float d = lattice[(cz + 1) * lw + cx + 1];
+                float top = a + (b - a) * tx, bottom = c + (d - c) * tx;
+                out_heights[(int64_t) z * sample_width + x] =
+                    top + (bottom - top) * tz;
+            }
+        }
+        free(lattice);
+        return SAX_OK;
+    }
 }
 
 SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity)

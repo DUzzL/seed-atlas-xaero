@@ -935,7 +935,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             config.overworldY(),
             config.netherY(),
             config.endY(),
-            config.highlightSignature()
+            config.highlightSignature(),
+            config.terrainStyle()
         );
     }
 
@@ -1077,6 +1078,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         private final long distance;
         private final long sequence;
         private final boolean[] highlightMask;
+        private final boolean terrainStyle;
         private final AtomicBoolean started = new AtomicBoolean();
 
         private TileTask(
@@ -1088,6 +1090,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             this.distance = distance;
             this.sequence = sequence;
             this.highlightMask = SeedAtlasBiomeOverlayRenderer.this.highlightMask;
+            this.terrainStyle = SeedAtlasClientState.config().terrainStyle();
         }
 
         @Override
@@ -1105,8 +1108,9 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 if (!isCurrent()) {
                     return;
                 }
-                BiomeRegion region = SeedAtlasXaeroIntegration.withSession(session ->
-                    session.biomeArea(
+                float[][] heightsOut = new float[1][];
+                BiomeRegion region = SeedAtlasXaeroIntegration.withSession(session -> {
+                    BiomeRegion biomes = session.biomeArea(
                         this.key.dimension,
                         this.key.originBlockX,
                         this.key.originBlockZ,
@@ -1114,8 +1118,24 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                         this.key.sampleStep,
                         this.key.textureSize,
                         this.key.textureSize
-                    )
-                );
+                    );
+                    if (this.terrainStyle && this.highlightMask.length == 0
+                        && this.key.dimension == Dimension.OVERWORLD && session.supportsHeights()) {
+                        // One-sample halo so slopes at tile edges see their neighbours.
+                        try {
+                            heightsOut[0] = session.heightArea(
+                                this.key.dimension,
+                                this.key.originBlockX - this.key.sampleStep,
+                                this.key.originBlockZ - this.key.sampleStep,
+                                this.key.sampleStep,
+                                this.key.textureSize + 2,
+                                this.key.textureSize + 2);
+                        } catch (RuntimeException ignored) {
+                            heightsOut[0] = null; // biome rendering continues with the noise relief
+                        }
+                    }
+                    return biomes;
+                });
                 if (region == null) {
                     if (isCurrent()) markFailed();
                     return;
@@ -1131,6 +1151,12 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 // Highlighting rewrites the samples before the upload, exactly like the
                 // desktop Seed Atlas renderer does while it builds its biome image.
                 BiomeHighlighter.apply(pixels, ids, this.highlightMask);
+                // Focus mode stays flat so highlighted biomes remain readable.
+                if (this.terrainStyle && this.highlightMask.length == 0
+                    && this.key.dimension == Dimension.OVERWORLD) {
+                    BiomeTerrainStyler.apply(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
+                        this.key.sampleStep, this.key.textureSize, this.key.seed, heightsOut[0]);
+                }
                 // Convert once on the worker so the render thread only bulk-uploads.
                 for (int i = 0; i < count; ++i) {
                     pixels[i] = ARGB.toABGR(pixels[i]);
@@ -1490,7 +1516,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         int overworldY,
         int netherY,
         int endY,
-        Set<Integer> highlightSignature
+        Set<Integer> highlightSignature,
+        boolean terrainStyle
     ) {
     }
 }

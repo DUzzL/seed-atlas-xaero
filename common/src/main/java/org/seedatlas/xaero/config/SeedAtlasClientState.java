@@ -247,6 +247,12 @@ public final class SeedAtlasClientState {
 		}
 	}
 
+	public static void setTerrainStyle(final boolean enabled) {
+		if (config().setTerrainStyle(enabled)) {
+			saveAndPublish(ChangeReason.DISPLAY);
+		}
+	}
+
 	public static void setStructuresEnabled(final boolean enabled) {
 		if (config().setStructuresEnabled(enabled)) {
 			saveAndPublish(ChangeReason.MARKERS);

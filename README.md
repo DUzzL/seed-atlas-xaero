@@ -20,7 +20,7 @@ Use **SA** on the world map to toggle the layer and **…** to open settings. Se
 
 ## Accuracy
 
-Predictions support vanilla Normal and Large Biomes worlds for the Minecraft version of the installed release. Custom world generation and modded dimensions are not supported. Some structures and spawn positions are approximate; a predicted marker does not guarantee that the structure exists in the world.
+Predictions support vanilla Normal and Large Biomes worlds for the Minecraft version of the installed release. Custom world generation and modded dimensions are not supported. Some structures and spawn positions are approximate; a predicted marker does not guarantee that the structure exists in the world. The terrain look shades unexplored areas from terrain heights estimated from the seed. These follow continents, oceans and hills but are approximate: they do not show exact block heights, caves, trees or structures.
 
 [Report an issue](https://github.com/DUzzL/seed-atlas-xaero/issues) with your Minecraft version, loader, mod versions and relevant logs.
 

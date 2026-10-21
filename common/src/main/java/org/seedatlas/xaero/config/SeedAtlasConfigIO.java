@@ -85,6 +85,7 @@ final class SeedAtlasConfigIO {
 
 			JsonObject display = object(root, "display");
 			config.setMarkerSize(integer(display, "markerSize", config.markerSize()));
+			config.setTerrainStyle(bool(display, "terrainStyle", config.terrainStyle()));
 
 			JsonObject highlight = object(root, "biomeHighlight");
 			config.setBiomeHighlightEnabled(
@@ -160,6 +161,7 @@ final class SeedAtlasConfigIO {
 
 		JsonObject display = new JsonObject();
 		display.addProperty("markerSize", config.markerSize());
+		display.addProperty("terrainStyle", config.terrainStyle());
 		root.add("display", display);
 
 		JsonObject highlight = new JsonObject();

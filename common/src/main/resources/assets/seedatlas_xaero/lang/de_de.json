@@ -28,6 +28,8 @@
     "options.seedatlas_xaero.prefetch_radius.1":  "Nah",
     "options.seedatlas_xaero.prefetch_radius.2":  "Mittel",
     "options.seedatlas_xaero.prefetch_radius.3":  "Weit",
+    "options.seedatlas_xaero.terrain_style":  "Gelaendeoptik: %s",
+    "tooltip.seedatlas_xaero.terrain_style":  "Schattiert unerkundete Bereiche anhand ungefaehrer, aus dem Seed geschaetzter Gelaendehoehen, mit Textur und Baumkronen. Die Hoehen sind eine Schaetzung, nicht das genaue Gelaende; ohne sie wird auf Dekoration auf Biom-Basis zurueckgegriffen.",
     "options.seedatlas_xaero.world_type":  "Welttyp: %s",
     "options.seedatlas_xaero.world_type.normal":  "Normal",
     "options.seedatlas_xaero.world_type.large":  "GroÃŸe Biome",

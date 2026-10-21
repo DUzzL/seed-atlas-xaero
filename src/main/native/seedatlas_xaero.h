@@ -41,7 +41,8 @@ enum sax_capability {
     SAX_CAP_ORE_VEINS = 1u << 5,
     SAX_CAP_END_SHIPS = 1u << 6,
     SAX_CAP_BIOME_SAMPLING = 1u << 7,
-    SAX_CAP_BIOME_AREAS = 1u << 8
+    SAX_CAP_BIOME_AREAS = 1u << 8,
+    SAX_CAP_HEIGHTS = 1u << 9
 };
 
 enum sax_dimension {
@@ -107,7 +108,7 @@ enum sax_result_flags {
 };
 
 enum {
-    SAX_ABI_VERSION = 4,
+    SAX_ABI_VERSION = 5,
     SAX_CHUNK_SAMPLE_COUNT = 16 * 16,
     SAX_MAX_BIOME_AREA_SAMPLES = 4 * 1024 * 1024,
     SAX_RESULT_STRIDE = 6,
@@ -171,6 +172,21 @@ SAX_API int32_t sax_biome_area_sampled(
     int32_t origin_block_x, int32_t origin_block_z, int32_t y,
     int32_t sample_step, int32_t sample_width, int32_t sample_height,
     int32_t *out_ids, uint32_t *out_argb, int32_t output_capacity);
+
+/*
+ * Approximate Overworld terrain height in blocks, for display shading only.
+ * It is the 1.18+ continentalness/erosion/weirdness offset spline sampled on
+ * the biome climate lattice, not the real surface: caves, overhangs, trees and
+ * structures are not modelled and mountains are smoothed. Each entry is the
+ * estimate at the centre of a sample_step x sample_step block cell; steps
+ * below 4 interpolate between climate cells. Origins need no alignment.
+ * Only the Overworld is supported (SAX_ERR_UNSUPPORTED otherwise).
+ */
+SAX_API int32_t sax_height_area_sampled(
+    const sax_context *context, int32_t dimension,
+    int32_t origin_block_x, int32_t origin_block_z,
+    int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    float *out_heights, int32_t output_capacity);
 
 /* Returns required bytes including NUL; 0 means the id has no known name. */
 SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity);
