@@ -3,6 +3,7 @@ package org.seedatlas.xaero.integration;
 import java.io.IOException;
 import java.util.List;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -19,6 +20,11 @@ public final class XaeroCompatibilityTest {
             check(map.fields.stream().anyMatch(f -> f.name.equals(field) && f.desc.equals("D")),
                 "GuiMap shadow changed: " + field);
         }
+        // MapNavigator's camera jump: an instance flag and a static one.
+        check(map.fields.stream().anyMatch(f -> f.name.equals("shouldResetCameraPos") && f.desc.equals("Z")
+            && (f.access & Opcodes.ACC_STATIC) == 0), "GuiMap shadow changed: shouldResetCameraPos");
+        check(map.fields.stream().anyMatch(f -> f.name.equals("attachedCamera") && f.desc.equals("Z")
+            && (f.access & Opcodes.ACC_STATIC) != 0), "GuiMap shadow changed: attachedCamera");
         for (String name : List.of("init", "tick", "removed")) {
             method(map, name, "()V");
         }
