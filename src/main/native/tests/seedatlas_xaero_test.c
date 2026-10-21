@@ -1,6 +1,7 @@
 #include "seedatlas_xaero.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -27,6 +28,7 @@ int main(void)
     assert((sax_capabilities() & SAX_CAP_BIOMES) != 0);
     assert((sax_capabilities() & SAX_CAP_BIOME_SAMPLING) != 0);
     assert((sax_capabilities() & SAX_CAP_BIOME_AREAS) != 0);
+    assert((sax_capabilities() & SAX_CAP_HEIGHTS) != 0);
     assert(sax_engine_version(version, sizeof(version)) > 1);
     assert(strstr(version, "26.3") != NULL);
 
@@ -63,6 +65,77 @@ int main(void)
                                    0, 0, 255, 3,
                                    sampled_ids, sampled_colors) ==
            SAX_ERR_ARGUMENT);
+
+    /* Compact areas preserve exact center sampling at block/detail levels. */
+    {
+        float h1[40 * 40], h2[40 * 40], hs[10 * 10];
+        int x, z;
+        float lo = 1e9F, hi = -1e9F;
+        /* Heights are deterministic, finite and vary over a wide area. */
+        assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                   -4000, -4000, 32, 40, 40, h1, 1600) == SAX_OK);
+        assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                   -4000, -4000, 32, 40, 40, h2, 1600) == SAX_OK);
+        for (i = 0; i < 1600; ++i) {
+            assert(h1[i] == h2[i]);
+            assert(h1[i] > -400.0F && h1[i] < 400.0F);
+            if (h1[i] < lo) lo = h1[i];
+            if (h1[i] > hi) hi = h1[i];
+        }
+        assert(hi - lo > 20.0F);
+        /* Interpolation: a step-2 sample centred on a climate-cell centre
+           equals that cell's step-4 value, and a step-1 sample 1/8 cell past
+           it is the bilinear blend with weights 7/8 and 1/8. */
+        {
+            float cells[4], s2[1], s1[1], expect;
+            assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                       -64, -64, 4, 2, 2, cells, 4) == SAX_OK);
+            assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                       -63, -63, 2, 1, 1, s2, 1) == SAX_OK);
+            assert(s2[0] == cells[0]);
+            assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                       -62, -62, 1, 1, 1, s1, 1) == SAX_OK);
+            expect = cells[0] * (49.0F / 64.0F) + cells[1] * (7.0F / 64.0F) +
+                     cells[2] * (7.0F / 64.0F) + cells[3] * (1.0F / 64.0F);
+            assert(fabsf(s1[0] - expect) < 1e-3F);
+        }
+        /* Steps below 4 are continuous across the origin, including negatives
+           and tile borders: two adjacent tiles equal one whole tile. */
+        {
+            float whole[16 * 8], left[8 * 8], right[8 * 8];
+            assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                       -13, -21, 2, 16, 8, whole, 128) == SAX_OK);
+            assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                       -13, -21, 2, 8, 8, left, 64) == SAX_OK);
+            assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                       -13 + 16, -21, 2, 8, 8, right, 64) == SAX_OK);
+            for (z = 0; z < 8; ++z) {
+                for (x = 0; x < 8; ++x) {
+                    assert(whole[z * 16 + x] == left[z * 8 + x]);
+                    assert(whole[z * 16 + x + 8] == right[z * 8 + x]);
+                }
+            }
+            /* neighbouring blocks differ by far less than the full range */
+            for (x = 1; x < 16; ++x) {
+                float d = whole[x] - whole[x - 1];
+                assert(d > -30.0F && d < 30.0F);
+            }
+        }
+        /* Errors: Nether/End unsupported, bad step, small buffer, no output. */
+        assert(sax_height_area_sampled(context, SAX_DIM_NETHER,
+                   0, 0, 4, 2, 2, hs, 4) == SAX_ERR_UNSUPPORTED);
+        assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                   0, 0, 3, 2, 2, hs, 4) == SAX_ERR_ARGUMENT);
+        assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                   0, 0, 4, 2, 2, hs, 3) == SAX_ERR_ARGUMENT);
+        assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                   0, 0, 4, 2, 2, NULL, 4) == SAX_ERR_ARGUMENT);
+        assert(sax_height_area_sampled(NULL, SAX_DIM_OVERWORLD,
+                   0, 0, 4, 2, 2, hs, 4) == SAX_ERR_ARGUMENT);
+        assert(sax_height_area_sampled(context, SAX_DIM_OVERWORLD,
+                   INT32_MAX - 3, 0, 4, 2, 1, hs, 4) ==
+               SAX_ERR_RANGE_TOO_LARGE);
+    }
 
     /* Compact areas preserve exact center sampling at block/detail levels. */
     {

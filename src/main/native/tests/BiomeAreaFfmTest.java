@@ -13,11 +13,15 @@ import org.seedatlas.xaero.nativeapi.Dimension;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
 
-/** Manual Java 25 FFM smoke/concurrency test for native ABI 4. */
+/** Manual Java 25 FFM smoke/concurrency test for native ABI 5 (4 is accepted for biomes only). */
 public final class BiomeAreaFfmTest {
     public static void main(String[] args) throws Exception {
         assert SeedAtlasNative.status().available();
-        assert SeedAtlasNative.engineVersion().contains("ABI 4");
+        // Checked-in macOS libraries may still be ABI 4 (biomes only) until CI rebuilds them;
+        // SAX_REQUIRE_HEIGHTS=1 (freshly built libraries) demands ABI 5.
+        boolean heights = SeedAtlasNative.engineVersion().contains("ABI 5");
+        assert heights || (SeedAtlasNative.engineVersion().contains("ABI 4")
+            && !"1".equals(System.getenv("SAX_REQUIRE_HEIGHTS")));
         assert SeedAtlasNative.engineVersion().contains("MC 26.3");
         try (SeedAtlasNative camp = SeedAtlasNative.open(14L, WorldType.NORMAL)) {
             var special = camp.structures(StructureType.ABANDONED_CAMP,
@@ -27,6 +31,25 @@ public final class BiomeAreaFfmTest {
             assert special.getFirst().hasSpecialLoot();
         }
         try (SeedAtlasNative atlas = SeedAtlasNative.open(8371904829L, WorldType.NORMAL)) {
+            assert atlas.supportsHeights() == heights;
+            if (heights) {
+                float[] area = atlas.heightArea(Dimension.OVERWORLD, -517, 39, 4, 24, 24);
+                float[] again = atlas.heightArea(Dimension.OVERWORLD, -517, 39, 4, 24, 24);
+                assert area.length == 576 && java.util.Arrays.equals(area, again);
+                float[] halo = atlas.heightArea(Dimension.OVERWORLD, -517 - 4, 39 - 4, 4, 26, 26);
+                for (int hz = 0; hz < 24; hz++) {
+                    for (int hx = 0; hx < 24; hx++) {
+                        assert halo[(hz + 1) * 26 + hx + 1] == area[hz * 24 + hx];
+                    }
+                }
+                boolean nether = false;
+                try {
+                    atlas.heightArea(Dimension.NETHER, 0, 0, 4, 4, 4);
+                } catch (org.seedatlas.xaero.nativeapi.NativeException expected) {
+                    nether = true;
+                }
+                assert nether;
+            }
             var dappled = atlas.biomeAt(Dimension.OVERWORLD, -1184, 100, 1248);
             assert dappled.id() == 188;
             assert dappled.name().equals("minecraft:dappled_forest");
@@ -121,6 +144,6 @@ public final class BiomeAreaFfmTest {
                 }
             }
         }
-        System.out.println("seedatlas_xaero Java FFM ABI 4 tests passed");
+        System.out.println("seedatlas_xaero Java FFM tests passed (heights " + (heights ? "on" : "off") + ")");
     }
 }

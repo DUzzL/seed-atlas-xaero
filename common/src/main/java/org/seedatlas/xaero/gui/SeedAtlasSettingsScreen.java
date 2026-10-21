@@ -78,7 +78,14 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.performance"), button -> {
 			this.commitValues();
 			this.minecraft.gui.setScreen(new PerformanceSettingsScreen(this));
-		}).bounds(left, 150, contentWidth, 20).build());
+		}).bounds(left, 150, halfWidth, 20).build());
+
+		this.addRenderableWidget(Button.builder(terrainStyleMessage(config.terrainStyle()), button -> {
+			boolean enabled = !SeedAtlasClientState.config().terrainStyle();
+			SeedAtlasClientState.setTerrainStyle(enabled);
+			button.setMessage(terrainStyleMessage(enabled));
+		}).bounds(left + halfWidth + gap, 150, halfWidth, 20)
+			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.terrain_style"))).build());
 
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.biome_highlights"), button -> {
 			this.commitValues();
@@ -181,6 +188,10 @@ public final class SeedAtlasSettingsScreen extends Screen {
 			"options.seedatlas_xaero.world_type",
 			Component.translatable(largeBiomes ? "options.seedatlas_xaero.world_type.large" : "options.seedatlas_xaero.world_type.normal")
 		);
+	}
+
+	private static Component terrainStyleMessage(final boolean enabled) {
+		return Component.translatable("options.seedatlas_xaero.terrain_style", toggleValue(enabled));
 	}
 
 	private static Component structuresMessage(final boolean enabled) {

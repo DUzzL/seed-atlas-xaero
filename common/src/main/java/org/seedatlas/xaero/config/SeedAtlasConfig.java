@@ -40,6 +40,7 @@ public final class SeedAtlasConfig {
 	private boolean biomeHighlightEnabled;
 	private final Set<Integer> highlightedBiomes = new LinkedHashSet<>();
 	private boolean largeBiomes;
+	private boolean terrainStyle = true;
 	private int overworldY = DEFAULT_OVERWORLD_Y;
 	private int netherY = DEFAULT_NETHER_Y;
 	private int endY = DEFAULT_END_Y;
@@ -229,6 +230,18 @@ public final class SeedAtlasConfig {
 			return false;
 		}
 		this.markerSize = normalized;
+		return true;
+	}
+
+	public synchronized boolean terrainStyle() {
+		return this.terrainStyle;
+	}
+
+	synchronized boolean setTerrainStyle(final boolean enabled) {
+		if (this.terrainStyle == enabled) {
+			return false;
+		}
+		this.terrainStyle = enabled;
 		return true;
 	}
 
