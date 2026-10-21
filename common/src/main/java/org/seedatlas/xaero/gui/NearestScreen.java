@@ -95,7 +95,7 @@ public final class NearestScreen extends Screen {
 				.filter(t -> NearestFinder.appliesTo(t, this.level)).toList();
 			MarkerToggleList list = new MarkerToggleList(this.minecraft, left, top, listWidth, listHeight, types);
 			list.useSelection(this.selectedTypes, this::refresh);
-			EditBox search = new EditBox(this.font, left, 64, listWidth, 20, Component.translatable("options.seedatlas_xaero.biome_search"));
+			EditBox search = new EditBox(this.font, left, 64, listWidth, 20, Component.translatable("options.seedatlas_xaero.structure_search"));
 			search.setHint(Component.translatable("options.seedatlas_xaero.structure_search"));
 			search.setResponder(list::setFilter);
 			this.addRenderableWidget(search);
