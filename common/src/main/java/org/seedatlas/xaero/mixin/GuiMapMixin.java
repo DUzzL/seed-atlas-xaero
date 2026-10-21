@@ -8,6 +8,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
+import org.seedatlas.xaero.integration.MapNavigator;
 import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -28,6 +29,10 @@ abstract class GuiMapMixin {
     private double cameraZ;
     @Shadow
     private double scale;
+    @Shadow
+    private boolean shouldResetCameraPos;
+    @Shadow
+    private static boolean attachedCamera;
 
     @Unique
     private Button seedAtlas$layerButton;
@@ -108,6 +113,14 @@ abstract class GuiMapMixin {
 
     @Inject(method = "tick", at = @At("HEAD"))
     private void seedAtlas$refreshState(CallbackInfo ci) {
+        // Xaero recentres on the player until its first frame; wait for that, then jump.
+        if (MapNavigator.hasPendingCamera() && !this.shouldResetCameraPos) {
+            var target = MapNavigator.takeCamera();
+            attachedCamera = false;
+            this.cameraX = target.x();
+            this.cameraZ = target.z();
+        }
+        MapNavigator.tickWaypoint();
         SeedAtlasClientState.refreshContext(Minecraft.getInstance());
         SeedAtlasXaeroIntegration.synchronizeRevision();
         seedAtlas$observeXaeroView();

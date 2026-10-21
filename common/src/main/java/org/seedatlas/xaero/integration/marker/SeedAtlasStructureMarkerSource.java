@@ -292,31 +292,8 @@ final class SeedAtlasStructureMarkerSource {
             return List.of();
         }
         try {
-            List<SeedAtlasStructureMarker> result = SeedAtlasXaeroIntegration.withSession(session -> {
-                if (marker == MarkerType.SPAWN) {
-                    BlockPos spawn = session.spawn(SpawnMode.ESTIMATED);
-                    if (spawn != null && box.contains(spawn.x(), spawn.z())) {
-                        return List.of(new SeedAtlasStructureMarker(
-                            marker, spawn.x(), spawn.y(), spawn.z(), request.level, true));
-                    }
-                    return List.of();
-                }
-
-                int resultLimit = NORMAL_RESULTS_PER_TYPE;
-                ScanResult scanResult;
-                if (marker == MarkerType.STRONGHOLD) {
-                    scanResult = session.strongholds(box, resultLimit, true);
-                } else if (marker == MarkerType.SLIME_CHUNK) {
-                    scanResult = session.slimeChunks(box, NORMAL_SLIME_RESULTS);
-                } else {
-                    StructureType structureType = structureType(marker, request.dimension);
-                    if (structureType == null) {
-                        return List.of();
-                    }
-                    scanResult = session.structures(structureType, box, resultLimit, true);
-                }
-                return markersFromScan(marker, request.level, scanResult, session);
-            });
+            List<SeedAtlasStructureMarker> result = SeedAtlasXaeroIntegration.withSession(
+                session -> scanWithSession(session, request.level, request.dimension, box, marker));
             if (!current.getAsBoolean() || result == null) {
                 return List.of();
             }
@@ -324,6 +301,35 @@ final class SeedAtlasStructureMarkerSource {
         } catch (RuntimeException | LinkageError ignored) {
             return List.of();
         }
+    }
+
+    static List<SeedAtlasStructureMarker> scanWithSession(
+        SeedAtlasNative session, ResourceKey<Level> level, Dimension dimension,
+        BlockBox box, MarkerType marker
+    ) {
+        if (marker == MarkerType.SPAWN) {
+            BlockPos spawn = session.spawn(SpawnMode.ESTIMATED);
+            if (spawn != null && box.contains(spawn.x(), spawn.z())) {
+                return List.of(new SeedAtlasStructureMarker(
+                    marker, spawn.x(), spawn.y(), spawn.z(), level, true));
+            }
+            return List.of();
+        }
+
+        int resultLimit = NORMAL_RESULTS_PER_TYPE;
+        ScanResult scanResult;
+        if (marker == MarkerType.STRONGHOLD) {
+            scanResult = session.strongholds(box, resultLimit, true);
+        } else if (marker == MarkerType.SLIME_CHUNK) {
+            scanResult = session.slimeChunks(box, NORMAL_SLIME_RESULTS);
+        } else {
+            StructureType structureType = structureType(marker, dimension);
+            if (structureType == null) {
+                return List.of();
+            }
+            scanResult = session.structures(structureType, box, resultLimit, true);
+        }
+        return markersFromScan(marker, level, scanResult, session);
     }
 
     private static List<SeedAtlasStructureMarker> markersFromScan(
@@ -386,7 +392,7 @@ final class SeedAtlasStructureMarkerSource {
             || marker == MarkerType.END_GATEWAY;
     }
 
-    private static boolean belongsToDimension(MarkerType marker, Dimension dimension) {
+    static boolean belongsToDimension(MarkerType marker, Dimension dimension) {
         return switch (dimension) {
             case OVERWORLD -> marker != MarkerType.BASTION
                 && marker != MarkerType.NETHER_FORTRESS
