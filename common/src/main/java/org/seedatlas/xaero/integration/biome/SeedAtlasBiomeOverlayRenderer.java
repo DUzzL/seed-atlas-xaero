@@ -20,6 +20,7 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -92,7 +93,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
     private final AtomicLong generation = new AtomicLong();
     private final AtomicLong taskSequence = new AtomicLong();
-    private final AtomicBoolean refinementRunning = new AtomicBoolean();
+    private final AtomicInteger refinementsRunning = new AtomicInteger();
     private volatile boolean coveragePending;
     private final ConcurrentHashMap<TileKey, TileTask> pending = new ConcurrentHashMap<>();
     private final Set<TileKey> readyKeys = ConcurrentHashMap.newKeySet();
@@ -1181,8 +1182,12 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                     return;
                 }
                 if (this.refining) {
-                    // Never let all tile workers queue behind the sampler's per-world lock.
-                    if (!SeedAtlasBiomeOverlayRenderer.this.refinementRunning.compareAndSet(false, true)) return;
+                    // Refinements take seconds; one worker stays free for the coverage of a newly panned view.
+                    if (SeedAtlasBiomeOverlayRenderer.this.refinementsRunning.incrementAndGet()
+                        > Math.max(1, WORKERS.getCorePoolSize() - 1)) {
+                        SeedAtlasBiomeOverlayRenderer.this.refinementsRunning.decrementAndGet();
+                        return;
+                    }
                     refinementSlot = true;
                 }
                 float[][] heightsOut = new float[1][];
@@ -1310,7 +1315,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             } catch (RuntimeException | LinkageError ignored) {
                 if (isCurrent()) markFailed();
             } finally {
-                if (refinementSlot) SeedAtlasBiomeOverlayRenderer.this.refinementRunning.set(false);
+                if (refinementSlot) SeedAtlasBiomeOverlayRenderer.this.refinementsRunning.decrementAndGet();
                 SeedAtlasBiomeOverlayRenderer.this.pending.remove(this.key, this);
             }
         }

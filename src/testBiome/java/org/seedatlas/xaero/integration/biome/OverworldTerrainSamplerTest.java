@@ -171,6 +171,9 @@ public final class OverworldTerrainSamplerTest {
                     "Actual base fluid uses surface-biome water tint");
         }
         check(floor <= top, "Ground cannot exceed visible surface");
+        for (int y = reference.height.getMaxY() - 63; y <= reference.height.getMaxY(); ++y) {
+            check(column.getBlock(y).isAir(), "Only air above the top slide at " + x + "," + y + "," + z);
+        }
         ++parityColumns;
     }
 
@@ -330,12 +333,13 @@ public final class OverworldTerrainSamplerTest {
 
     private static void boundedCaches() throws Exception {
         clearCaches();
+        int bound = constant("MAX_CACHED_TILES");
         var expected = sample(SEED, false, -200, 14, 1, 1, 1);
-        for (int tile = 0; tile < 513; ++tile) sample(SEED, false, tile * 16, 0, 1, 1, 1);
-        check(cache("CACHE").size() == 512, "Spatial cache bounded at 512 tiles");
+        for (int tile = 0; tile <= bound; ++tile) sample(SEED, false, tile * 16, 0, 1, 1, 1);
+        check(cache("CACHE").size() == bound, "Spatial cache bounded at " + bound + " tiles");
         sameGrid(expected, sample(SEED, false, -200, 14, 1, 1, 1), "Eviction regenerates identically");
         for (int seed = 0; seed < 3; ++seed) sample(seed, false, 0, 0, 1, 1, 1);
-        check(cache("CACHE").size() == 512, "All seeds and modes share the tile bound");
+        check(cache("CACHE").size() == bound, "All seeds and modes share the tile bound");
         check(cache("CONTEXTS").size() == 2, "Mutable vanilla generation contexts bounded at two");
         var max = sample(SEED, false, -262, -262, 1, 262, 262);
         check(max.heights().length == 262 * 262 && max.floors().length == max.colors().length,
@@ -355,22 +359,47 @@ public final class OverworldTerrainSamplerTest {
     }
 
     private static void benchmark() throws Exception {
-        System.out.printf("Sampler benchmark: MC=26.3 seed=%d largeBiomes=false origin=(-256,-256) size=258x258"
-                        + " Java=%s arch=%s cache=512 tiles contexts=2%n",
-                SEED, System.getProperty("java.version"), System.getProperty("os.arch"));
+        System.out.printf("Sampler benchmark: MC=26.3 seed=%d largeBiomes=false size=258x258"
+                        + " Java=%s arch=%s cache=%d tiles contexts=2%n",
+                SEED, System.getProperty("java.version"), System.getProperty("os.arch"), constant("MAX_CACHED_TILES"));
+        // Spawn coast and ocean, then the frozen peaks found by the parity check.
+        for (int[] origin : new int[][]{{-256, -256}, {-6912, -4352}}) {
+            for (int step : new int[]{1, 2, 4}) {
+                clearCaches();
+                long start = System.nanoTime();
+                var cold = sample(SEED, false, origin[0], origin[1], step, 258, 258);
+                double coldMs = (System.nanoTime() - start) / 1e6;
+                start = System.nanoTime();
+                var warm = sample(SEED, false, origin[0], origin[1], step, 258, 258);
+                double warmMs = (System.nanoTime() - start) / 1e6;
+                sameGrid(cold, warm, "Benchmark determinism");
+                System.out.printf(Locale.ROOT, "origin=(%d,%d) step=%d cold=%.1fms warm=%.1fms tiles=%d"
+                                + " heightsHash=%d floorsHash=%d colorsHash=%d%n",
+                        origin[0], origin[1], step, coldMs, warmMs, cache("CACHE").size(), Arrays.hashCode(cold.heights()),
+                        Arrays.hashCode(cold.floors()), Arrays.hashCode(cold.colors()));
+            }
+        }
+        // Six neighbouring map tiles at once, as six renderer workers request them; shared halos are deduplicated.
         for (int step : new int[]{1, 2, 4}) {
             clearCaches();
+            int span = 256 * step;
+            var jobs = new ArrayList<Callable<SurfaceGrid>>();
+            for (int tile = 0; tile < 6; ++tile) {
+                int originX = -256 + (tile % 3) * span - step, originZ = -256 + (tile / 3) * span - step;
+                jobs.add(() -> sample(SEED, false, originX, originZ, step, 258, 258));
+            }
             long start = System.nanoTime();
-            var cold = sample(SEED, false, -256, -256, step, 258, 258);
-            double coldMs = (System.nanoTime() - start) / 1e6;
-            start = System.nanoTime();
-            var warm = sample(SEED, false, -256, -256, step, 258, 258);
-            double warmMs = (System.nanoTime() - start) / 1e6;
-            sameGrid(cold, warm, "Benchmark determinism");
-            System.out.printf(Locale.ROOT, "step=%d cold=%.1fms warm=%.1fms tiles=%d heightsHash=%d floorsHash=%d colorsHash=%d%n",
-                    step, coldMs, warmMs, cache("CACHE").size(), Arrays.hashCode(cold.heights()),
-                    Arrays.hashCode(cold.floors()), Arrays.hashCode(cold.colors()));
+            try (var executor = Executors.newFixedThreadPool(6)) {
+                for (var result : executor.invokeAll(jobs)) result.get();
+            }
+            System.out.printf(Locale.ROOT, "step=%d six tiles on six threads=%.1fms%n", step, (System.nanoTime() - start) / 1e6);
         }
+    }
+
+    private static int constant(String name) throws Exception {
+        var field = OverworldTerrainSampler.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.getInt(null);
     }
 
     private static SurfaceGrid sample(long seed, boolean large, int x, int z, int step, int width, int height) {
