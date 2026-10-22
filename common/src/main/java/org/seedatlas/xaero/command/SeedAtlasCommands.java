@@ -30,7 +30,11 @@ public final class SeedAtlasCommands {
 				.then(dimensionSeed("end", Dimension.END, source)))
 			.then(LiteralArgumentBuilder.<S>literal("clear")
 				.requires(value -> source.apply(value).attended())
-				.executes(context -> clearSeed(source.apply(context.getSource()))))
+				.executes(context -> clearSeed(source.apply(context.getSource())))
+				.then(LiteralArgumentBuilder.<S>literal("nether")
+					.executes(context -> clearDimensionSeed(source.apply(context.getSource()), Dimension.NETHER)))
+				.then(LiteralArgumentBuilder.<S>literal("end")
+					.executes(context -> clearDimensionSeed(source.apply(context.getSource()), Dimension.END))))
 			.then(LiteralArgumentBuilder.<S>literal("status")
 				.executes(context -> status(source.apply(context.getSource()))))
 			.then(LiteralArgumentBuilder.<S>literal("settings")
@@ -39,13 +43,14 @@ public final class SeedAtlasCommands {
 		);
 	}
 
-	/** {@code dimension-seed <name> <seed>} gives one dimension its own seed; {@code clear} removes it. */
+	/**
+	 * {@code dimension-seed <name> <seed>} gives one dimension its own seed; {@code clear <name>}
+	 * removes it. Clearing is not a child here, where it would be ambiguous with a text seed.
+	 */
 	private static <S> LiteralArgumentBuilder<S> dimensionSeed(
 		final String name, final Dimension dimension, final Function<S, SeedAtlasCommandSource> source
 	) {
 		return LiteralArgumentBuilder.<S>literal(name)
-			.then(LiteralArgumentBuilder.<S>literal("clear")
-				.executes(context -> clearDimensionSeed(source.apply(context.getSource()), dimension)))
 			.then(RequiredArgumentBuilder.<S, String>argument("seed", StringArgumentType.greedyString())
 				.executes(context -> setDimensionSeed(source.apply(context.getSource()), dimension,
 					StringArgumentType.getString(context, "seed"))));

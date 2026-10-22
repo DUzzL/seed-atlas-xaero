@@ -40,15 +40,21 @@ public final class CommandRegistrationTest {
                 check(dispatcher.parse(command, false).getReader().canRead(),
                     "Changing a dimension seed needs an attended client");
             }
-            var clear = dispatcher.parse("seedatlas dimension-seed " + dimension + " clear", true);
-            check(!clear.getReader().canRead() && clear.getContext().getCommand() != null
-                    && clear.getContext().getNodes().getLast().getNode().getName().equals("clear"),
-                "clear removes the dimension seed instead of setting the text seed \"clear\"");
+            var clear = dispatcher.parse("seedatlas clear " + dimension, true);
+            check(!clear.getReader().canRead() && clear.getContext().getCommand() != null,
+                "clear <dimension> removes only that dimension's seed");
+            check(dispatcher.parse("seedatlas clear " + dimension, false).getReader().canRead(),
+                "Clearing a dimension seed needs an attended client");
             check(dispatcher.parse("seedatlas dimension-seed " + dimension, true).getContext().getCommand() == null,
                 "A dimension seed requires a value");
         }
         check(dispatcher.parse("seedatlas dimension-seed overworld 1", true).getReader().canRead(),
             "The Overworld uses the base seed command");
+        // Minecraft logs every ambiguity at startup; the tree must have none.
+        var ambiguities = new java.util.ArrayList<String>();
+        dispatcher.findAmbiguities((parent, child, sibling, inputs) ->
+            ambiguities.add(child.getName() + " / " + sibling.getName() + " " + inputs));
+        check(ambiguities.isEmpty(), "Ambiguous client commands: " + ambiguities);
         System.out.println("Shared client command registration tests passed");
     }
 
