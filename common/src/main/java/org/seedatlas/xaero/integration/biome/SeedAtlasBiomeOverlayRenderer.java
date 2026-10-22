@@ -1344,7 +1344,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 colors[i] = id >= names.length ? -1 : OverworldTerrainSampler.previewColor(names[id],
                     this.key.originBlockX + x * this.key.sampleStep + centre,
                     hasHeights ? Math.round(heights[(z + 1) * hw + x + 1]) : 64,
-                    this.key.originBlockZ + z * this.key.sampleStep + centre, BiomeTerrainStyler.waterBiome(id));
+                    this.key.originBlockZ + z * this.key.sampleStep + centre, BiomeTerrainStyler.waterBiome(id),
+                    this.key.sampleStep);
             }
             return colors;
         }

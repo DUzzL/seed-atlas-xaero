@@ -5,7 +5,6 @@ import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
@@ -13,7 +12,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
 import net.minecraft.world.level.block.Blocks;
@@ -42,7 +40,7 @@ public final class OverworldTerrainSampler {
      * Heights are the highest non-air base block Y (including fluid); floors are the highest solid Y.
      * These match base columns, not surface rules, carvers, structures, features, ice or snow layers.
      * Colours infer surface material from the base block, surface biome and temperature, not exact blocks.
-     * Grass without a built-in biome override uses a fixed green, not the temperature/downfall colormap.
+     * Grass and leaves use the biome's vanilla tint; forest crowns are decoration, not predicted trees.
      * Minecraft must already be bootstrapped. Steps 1/2/4/8/16 and dimensions 1..262 are supported;
      * coarse steps still evaluate real vanilla density and are substantially more expensive per sample.
      */
@@ -89,11 +87,11 @@ public final class OverworldTerrainSampler {
     public record SurfaceGrid(float[] heights, float[] floors, int[] colors) { }
 
     /** Cheap LOD preview using the same material palette, without evaluating terrain density. */
-    static int previewColor(String name, int x, int y, int z, boolean water) {
+    static int previewColor(String name, int x, int y, int z, boolean water, int step) {
         if (name == null) return -1;
         var biome = PREVIEW_BIOMES.computeIfAbsent(name, value -> Vanilla.LOOKUP.lookupOrThrow(Registries.BIOME)
                 .get(ResourceKey.create(Registries.BIOME, Identifier.parse(value))).orElse(null));
-        return biome == null ? -1 : surfaceColor(biome, x, y, z, water, 63);
+        return biome == null ? -1 : surfaceColor(biome, x, y, z, water, 63, step);
     }
 
     private static SurfaceGrid tile(TileKey key, BooleanSupplier stillCurrent) {
@@ -184,7 +182,7 @@ public final class OverworldTerrainSampler {
                         result.heights[index] = top;
                         result.floors[index] = floor;
                         var biome = resolver.getNoiseBiome(blockX >> 2, top >> 2, blockZ >> 2);
-                        result.colors[index] = surfaceColor(biome, blockX, top, blockZ, fluid, settings.seaLevel());
+                        result.colors[index] = surfaceColor(biome, blockX, top, blockZ, fluid, settings.seaLevel(), key.step);
                     }
                 }
             }
@@ -192,20 +190,9 @@ public final class OverworldTerrainSampler {
         }
     }
 
-    static int surfaceColor(Holder<Biome> biome, int x, int y, int z, boolean fluid, int seaLevel) {
-        if (fluid) return biome.value().getWaterColor() & 0xffffff;
-        // shortcut: infer top material without chunk-dependent material rules; upgrade only with a chunk-free rule API.
-        if (biome.value().coldEnoughToSnow(new BlockPos(x, y, z), seaLevel)) return 0xe8eff0;
-        if (biome.is(Biomes.DESERT) || biome.is(Biomes.BEACH)) return 0xd8cf9b;
-        if (biome.is(Biomes.STONY_SHORE) || biome.is(Biomes.STONY_PEAKS)) return 0x858585;
-        if (biome.is(Biomes.BADLANDS) || biome.is(Biomes.ERODED_BADLANDS)
-                || biome.is(Biomes.WOODED_BADLANDS)) return 0xb06b48;
-        if (biome.is(Biomes.MUSHROOM_FIELDS)) return 0x8b7f90;
-        if (biome.is(Biomes.MANGROVE_SWAMP)) return 0x514b40;
-        var effects = biome.value().getSpecialEffects();
-        // Use immutable biome tints, not the client/resource-pack grass colormap, which may not be loaded on workers.
-        int grass = effects.grassColorOverride().orElse(0x91bd59);
-        return effects.grassColorModifier().modifyColor(x, z, grass) & 0xffffff;
+    /** Surface colour of one sample; see {@link BiomeSurfacePalette}. */
+    static int surfaceColor(Holder<Biome> biome, int x, int y, int z, boolean fluid, int seaLevel, int step) {
+        return BiomeSurfacePalette.surfaceColor(biome, x, y, z, fluid, seaLevel, step);
     }
 
     private static final class Vanilla {

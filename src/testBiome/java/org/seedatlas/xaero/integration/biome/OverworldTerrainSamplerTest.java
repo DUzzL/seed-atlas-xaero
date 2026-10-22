@@ -76,8 +76,8 @@ public final class OverworldTerrainSamplerTest {
             float[] floors = new float[9], top = new float[9];
             Arrays.fill(floors, water ? 48 : 64);
             Arrays.fill(top, water ? 62 : 64);
-            int color = OverworldTerrainSampler.previewColor("minecraft:" + names[i], -41, 64, -266, water);
-            check(color == OverworldTerrainSampler.previewColor(names[i], -41, 64, -266, water),
+            int color = OverworldTerrainSampler.previewColor("minecraft:" + names[i], -41, 64, -266, water, 1);
+            check(color == OverworldTerrainSampler.previewColor(names[i], -41, 64, -266, water, 1),
                 "Java namespaced biome names and native bare names resolve identically");
             check(color >= 0, "Native biome name resolves to the vanilla preview palette: " + names[i]);
             int[] fullColors = new int[9];
@@ -91,7 +91,7 @@ public final class OverworldTerrainSamplerTest {
                 check(preview[0] == detailed[0], "Flat preview/detail colours match at LOD " + step + " biome=" + names[i]);
             }
         }
-        check(OverworldTerrainSampler.previewColor("not_a_vanilla_biome", 0, 64, 0, false) == -1,
+        check(OverworldTerrainSampler.previewColor("not_a_vanilla_biome", 0, 64, 0, false, 1) == -1,
             "Unknown biomes do not invent preview materials");
         int[] unknown = {0xa0123456};
         BiomeTerrainStyler.applyPreview(unknown, new short[]{(short) 65535}, 64, 1, null, new int[]{-1});
@@ -162,7 +162,8 @@ public final class OverworldTerrainSamplerTest {
         if (!column.getBlock(top).getFluidState().isEmpty()) {
             var resolver = biomes.createResolver(reference.state.createClimateSampler(SamplerContext.EMPTY_UNCACHED));
             int waterColor = resolver.getNoiseBiome(x >> 2, top >> 2, z >> 2).value().getWaterColor() & 0xffffff;
-            check(area.colors()[index] == waterColor, "Actual base fluid uses surface-biome water tint");
+            check(area.colors()[index] == BiomeSurfacePalette.water(waterColor),
+                    "Actual base fluid uses surface-biome water tint");
         }
         check(floor <= top, "Ground cannot exceed visible surface");
         ++parityColumns;
@@ -170,27 +171,93 @@ public final class OverworldTerrainSamplerTest {
 
     private static void materialCategories() {
         var registry = lookup.lookupOrThrow(Registries.BIOME);
-        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.DESERT), 0, 70, 0, false, 63)
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.DESERT), 0, 70, 0, false, 63, 1)
                 == 0xd8cf9b, "Desert sand is cream, not grass");
-        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.BEACH), 0, 64, 0, false, 63)
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.BEACH), 0, 64, 0, false, 63, 1)
                 == 0xd8cf9b, "Beach sand is cream");
-        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.STONY_SHORE), 0, 64, 0, false, 63)
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.STONY_SHORE), 0, 64, 0, false, 63, 1)
                 == 0x858585, "Stony shore is stone, not sand");
-        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.SNOWY_PLAINS), 0, 70, 0, false, 63)
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.SNOWY_PLAINS), 0, 70, 0, false, 63, 1)
                 == 0xe8eff0, "Cold land gets inferred snow");
-        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.PLAINS), 0, 70, 0, false, 63)
-                == 0x91bd59, "Grass fallback is stable without client colormap resources");
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.SNOWY_TAIGA), 0, 90, 0, false, 63, 1)
+                == 0xe8eff0, "Snow covers the crowns of snowy forests");
+        // Without client resources the colormap triangle stands in for grass.png: plains (0.8, 0.4).
+        int plains = OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.PLAINS), 0, 70, 0, false, 63, 1);
+        check(plains == BiomeSurfacePalette.grass(0x8cbd57), "Plains grass follows the vanilla colormap: "
+                + Integer.toHexString(plains));
+        // Savanna (2.0, 0.0) is the hot-dry corner, so the network-codec downfall reached the lookup.
+        check(BiomeSurfacePalette.ground(registry.getOrThrow(Biomes.SAVANNA), 0, 70, 0, false, 63)
+                == BiomeSurfacePalette.grass(0xbfb755), "Savanna grass is the dry olive corner");
         var swamp = registry.getOrThrow(Biomes.SWAMP);
         for (int x : new int[]{-512, 0, 512}) {
-            check(OverworldTerrainSampler.surfaceColor(swamp, x, 63, -266, false, 63)
-                            == (swamp.value().getGrassColor(x, -266) & 0xffffff), "Swamp uses vanilla grass modifier, not fake canopy");
-            check(OverworldTerrainSampler.surfaceColor(swamp, x, 62, -266, true, 63)
-                            == (swamp.value().getWaterColor() & 0xffffff), "Actual fluid gets vanilla biome water tint");
+            check(BiomeSurfacePalette.ground(swamp, x, 63, -266, false, 63)
+                            == BiomeSurfacePalette.grass(swamp.value().getGrassColor(x, -266) & 0xffffff),
+                    "Swamp ground uses the vanilla grass modifier");
+            check(OverworldTerrainSampler.surfaceColor(swamp, x, 62, -266, true, 63, 1)
+                            == BiomeSurfacePalette.water(swamp.value().getWaterColor()), "Actual fluid gets vanilla biome water tint");
         }
-        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.SNOWY_PLAINS), 0, 62, 0, true, 63)
-                        == (registry.getOrThrow(Biomes.SNOWY_PLAINS).value().getWaterColor() & 0xffffff),
+        check(OverworldTerrainSampler.surfaceColor(registry.getOrThrow(Biomes.SNOWY_PLAINS), 0, 62, 0, true, 63, 1)
+                        == BiomeSurfacePalette.water(registry.getOrThrow(Biomes.SNOWY_PLAINS).value().getWaterColor()),
                 "Frozen-biome water remains base fluid, not a claim of generated ice");
+        biomeDistinction(registry);
+        crownCoverage(registry);
     }
+
+    /** Common land biomes must stay distinguishable at every zoom, not collapse into one green. */
+    private static void biomeDistinction(net.minecraft.core.HolderGetter<net.minecraft.world.level.biome.Biome> registry) {
+        var keys = java.util.List.of(Biomes.PLAINS, Biomes.MEADOW, Biomes.FOREST, Biomes.BIRCH_FOREST, Biomes.DARK_FOREST,
+                Biomes.TAIGA, Biomes.OLD_GROWTH_SPRUCE_TAIGA, Biomes.JUNGLE, Biomes.SAVANNA, Biomes.SWAMP,
+                Biomes.CHERRY_GROVE, Biomes.PALE_GARDEN, Biomes.MANGROVE_SWAMP, Biomes.FLOWER_FOREST);
+        for (int step : new int[]{1, 16, 1024}) {
+            var seen = new java.util.HashMap<Integer, String>();
+            for (var key : keys) {
+                int color = average(registry.getOrThrow(key), step);
+                String previous = seen.put(color, key.identifier().getPath());
+                check(previous == null, "Biomes share one colour at step " + step + ": " + previous + " / " + key);
+            }
+        }
+        int savanna = average(registry.getOrThrow(Biomes.SAVANNA), 16);
+        int jungle = average(registry.getOrThrow(Biomes.JUNGLE), 16);
+        int taiga = average(registry.getOrThrow(Biomes.TAIGA), 16);
+        int cherry = average(registry.getOrThrow(Biomes.CHERRY_GROVE), 16);
+        check(red(savanna) - green(savanna) > red(jungle) - green(jungle), "Savanna reads drier than jungle");
+        check(blue(taiga) * 255 / Math.max(1, green(taiga)) > blue(jungle) * 255 / Math.max(1, green(jungle)),
+                "Taiga reads bluer than jungle");
+        check(red(cherry) > red(jungle) + 20, "Cherry groves show pink crowns");
+    }
+
+    private static void crownCoverage(net.minecraft.core.HolderGetter<net.minecraft.world.level.biome.Biome> registry) {
+        var forest = registry.getOrThrow(Biomes.FOREST);
+        int ground = BiomeSurfacePalette.ground(forest, 0, 70, 0, false, 63);
+        int leaf = BiomeSurfacePalette.leaf(forest);
+        check(leaf >= 0 && leaf != ground, "Forests have their own leaf colour");
+        check(BiomeSurfacePalette.leaf(registry.getOrThrow(Biomes.PLAINS)) == -1, "Plains have no crowns");
+        int crowns = 0, total = 0;
+        for (int z = -300; z < 300; ++z) for (int x = -300; x < 300; ++x) {
+            int color = BiomeSurfacePalette.crowns(ground, leaf, 0.55F, x, z, 1);
+            check(color == BiomeSurfacePalette.crowns(ground, leaf, 0.55F, x, z, 1), "Crowns are deterministic");
+            if (color != ground) ++crowns;
+            ++total;
+        }
+        double coverage = crowns / (double) total;
+        check(coverage > 0.4 && coverage < 0.7, "Crown coverage follows the forest density: " + coverage);
+        check(BiomeSurfacePalette.crowns(ground, leaf, 0.55F, 7, 9, 16) == BiomeSurfacePalette.mix(ground, leaf, 0.55F),
+                "Coarse samples blend leaves by coverage instead of dotting");
+    }
+
+    /** Mean colour over a block area at one LOD, which is what a viewer perceives. */
+    private static int average(net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biome, int step) {
+        long r = 0, g = 0, b = 0, n = 0;
+        for (int z = 0; z < 160; z += Math.min(step, 8)) for (int x = 0; x < 160; x += Math.min(step, 8)) {
+            int color = OverworldTerrainSampler.surfaceColor(biome, x, 70, z, false, 63, step);
+            r += red(color); g += green(color); b += blue(color); ++n;
+        }
+        return (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n);
+    }
+
+    private static int red(int color) { return color >> 16 & 255; }
+    private static int green(int color) { return color >> 8 & 255; }
+    private static int blue(int color) { return color & 255; }
 
     private static void samplingAndHalos() {
         for (int step : new int[]{1, 2, 4, 8, 16}) {
@@ -200,7 +267,11 @@ public final class OverworldTerrainSamplerTest {
             for (int z = 0; z < height; ++z) for (int x = 0; x < width; ++x) {
                 var block = sample(SEED, false, originX + x * step + (step - 1) / 2,
                         originZ + z * step + (step - 1) / 2, 1, 1, 1);
-                sameSample(area, z * width + x, block, 0, "LOD lower-centre coordinate step=" + step);
+                // Samples of 8+ blocks blend forest crowns by coverage, so only their columns match a block.
+                int index = z * width + x;
+                check(area.heights()[index] == block.heights()[0] && area.floors()[index] == block.floors()[0]
+                        && (step >= 8 || area.colors()[index] == block.colors()[0]),
+                        "LOD lower-centre coordinate step=" + step);
                 sameSample(area, z * width + x, halo, (z + 1) * (width + 2) + x + 1,
                         "Negative-origin halo consistency step=" + step);
             }
