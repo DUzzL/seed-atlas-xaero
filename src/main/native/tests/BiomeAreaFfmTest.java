@@ -13,25 +13,50 @@ import org.seedatlas.xaero.nativeapi.Dimension;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
 
-/** Manual Java 25 FFM smoke/concurrency test for native ABI 5 (4 is accepted for biomes only). */
+/** Manual Java 25 FFM smoke/concurrency test for native ABI 6 (4/5 accepted with fewer features). */
 public final class BiomeAreaFfmTest {
     public static void main(String[] args) throws Exception {
         assert SeedAtlasNative.status().available();
         // Checked-in macOS libraries may still be ABI 4 (biomes only) until CI rebuilds them;
-        // SAX_REQUIRE_HEIGHTS=1 (freshly built libraries) demands ABI 5.
-        boolean heights = SeedAtlasNative.engineVersion().contains("ABI 5");
-        assert heights || (SeedAtlasNative.engineVersion().contains("ABI 4")
+        // SAX_REQUIRE_HEIGHTS=1 (freshly built libraries) demands ABI 6.
+        boolean abi6 = SeedAtlasNative.engineVersion().contains("ABI 6");
+        assert abi6 || (SeedAtlasNative.engineVersion().matches(".*ABI [45].*")
             && !"1".equals(System.getenv("SAX_REQUIRE_HEIGHTS")));
         assert SeedAtlasNative.engineVersion().contains("MC 26.3");
+        boolean heights;
         try (SeedAtlasNative camp = SeedAtlasNative.open(14L, WorldType.NORMAL)) {
+            heights = camp.supportsHeights();
             var special = camp.structures(StructureType.ABANDONED_CAMP,
                 new BlockBox(-832, -2128, -832, -2128), 8, true).positions();
             assert special.size() == 1;
             assert special.getFirst().campBiomeId() == 30;
             assert special.getFirst().hasSpecialLoot();
         }
+        if (abi6) {
+            // Independent 26.3 vanilla-density fixture at the reported player's column:
+            // Full cave mode skips the roof from 127, not the biome sampling layer 64.
+            try (SeedAtlasNative reported = SeedAtlasNative.open(2842062689604764280L, WorldType.NORMAL)) {
+                assert reported.netherFloorArea(-170, 14, 64, 1, 1, 1)[0] == 59.0F;
+                assert reported.netherFloorArea(-170, 14, 127, 1, 1, 1)[0] == 100.0F;
+                assert reported.netherFloorArea(-170, -18, 64, 1, 1, 1)[0] == 0.0F;
+                assert reported.netherFloorArea(-170, -18, 127, 1, 1, 1)[0] == 102.0F;
+                assert reported.supportsNetherCarving();
+                assert reported.netherFloorArea(-200, 14, 127, 1, 1, 1)[0] == 62.0F;
+                long[] carved = {0, (1L << (102 - 64)) | (1L << (103 - 64))};
+                assert reported.netherFloorArea(-200, 14, 127, 1, 1, 1, carved)[0] == 101.0F;
+                assert reported.netherFloorArea(-200, 14, 127, 1, 1, 1, new long[2])[0] == 62.0F;
+                boolean invalidMask = false;
+                try {
+                    reported.netherFloorArea(-200, 14, 127, 1, 1, 1, new long[1]);
+                } catch (IllegalArgumentException expected) {
+                    invalidMask = true;
+                }
+                assert invalidMask;
+            }
+        }
         try (SeedAtlasNative atlas = SeedAtlasNative.open(8371904829L, WorldType.NORMAL)) {
             assert atlas.supportsHeights() == heights;
+            assert heights == SeedAtlasNative.engineVersion().matches(".*ABI [56].*");
             if (heights) {
                 float[] area = atlas.heightArea(Dimension.OVERWORLD, -517, 39, 4, 24, 24);
                 float[] again = atlas.heightArea(Dimension.OVERWORLD, -517, 39, 4, 24, 24);
@@ -49,6 +74,29 @@ public final class BiomeAreaFfmTest {
                     nether = true;
                 }
                 assert nether;
+            }
+            if (abi6) {
+                assert atlas.supportsNetherFloor();
+                float[] nf = atlas.netherFloorArea(-48, 16, 64, 4, 24, 24);
+                float[] nfHalo = atlas.netherFloorArea(-52, 12, 64, 4, 26, 26);
+                boolean lavaSeen = false, rockSeen = false;
+                for (int hz = 0; hz < 24; hz++) {
+                    for (int hx = 0; hx < 24; hx++) {
+                        assert nfHalo[(hz + 1) * 26 + hx + 1] == nf[hz * 24 + hx];
+                        if (nf[hz * 24 + hx] < 31) lavaSeen = true; else rockSeen = true;
+                    }
+                }
+                assert nf.length == 576 && lavaSeen && rockSeen;
+                float[] end = atlas.heightArea(Dimension.END, -64, -64, 4, 32, 32);
+                float top = 0;
+                for (float v : end) top = Math.max(top, v);
+                assert end.length == 1024 && top > 30;
+                float[] endHalo = atlas.heightArea(Dimension.END, -68, -68, 4, 34, 34);
+                for (int hz = 0; hz < 32; hz++) {
+                    for (int hx = 0; hx < 32; hx++) {
+                        assert endHalo[(hz + 1) * 34 + hx + 1] == end[hz * 32 + hx];
+                    }
+                }
             }
             var dappled = atlas.biomeAt(Dimension.OVERWORLD, -1184, 100, 1248);
             assert dappled.id() == 188;

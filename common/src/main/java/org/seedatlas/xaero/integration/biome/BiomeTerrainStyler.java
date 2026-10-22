@@ -1,11 +1,9 @@
 package org.seedatlas.xaero.integration.biome;
 
 /**
- * Terrain look for seed-only tiles: hill-shaded relief, canopy dots, water depth tones and
- * biome-edge outlines. When the native engine supplies height estimates, relief is shaded from
- * them (an approximation of the 1.18+ terrain offset, not the exact surface: caves, trees,
- * structures and jagged peaks are not modelled). Otherwise relief falls back to smooth noise
- * over absolute block coordinates, which is decoration only. Either way adjacent tiles match.
+ * Terrain look for seed-only tiles: surface colours, hill shading and water depth tones.
+ * Detailed Overworld tiles use vanilla base terrain; fast previews share their palette with
+ * approximate native heights. Neither predicts trees or structures.
  */
 public final class BiomeTerrainStyler {
     private static final int LIMIT = 256;
@@ -13,7 +11,6 @@ public final class BiomeTerrainStyler {
     /** Relief strength per biome id (0 = flat). */
     private static final int[] RELIEF = new int[LIMIT];
     private static final byte[] KIND = new byte[LIMIT];
-    private static final boolean[] CANOPY = new boolean[LIMIT];
     static {
         java.util.Arrays.fill(KIND, LAND);
         java.util.Arrays.fill(RELIEF, 14);
@@ -24,13 +21,113 @@ public final class BiomeTerrainStyler {
         for (int id : new int[]{3, 20, 34, 131, 162, 177, 178, 179, 180, 181, 182, 12, 13, 140}) RELIEF[id] = 38;
         for (int id : new int[]{180, 181, 182, 3, 34, 131, 162}) RELIEF[id] = 52;
         for (int id : new int[]{4, 5, 18, 19, 21, 22, 23, 27, 28, 29, 30, 31, 32, 33, 132, 133, 155, 156, 157, 158, 160, 161, 168, 169, 185, 184, 186, 188, 6, 134}) {
-            CANOPY[id] = true;
             RELIEF[id] = 22;
         }
         for (int id : new int[]{16, 25, 26}) RELIEF[id] = 6; // beaches and shores stay flat
     }
 
     private BiomeTerrainStyler() { }
+
+    static boolean waterBiome(int id) {
+        return id >= 0 && id < LIMIT && KIND[id] != LAND;
+    }
+
+    /** Same surface palette/shading at every Overworld LOD; only preview geometry is approximate. */
+    static void applyPreview(int[] argb, short[] ids, int step, int size, float[] floors, int[] colors) {
+        if (size <= 0 || step <= 0 || argb.length < size * size || ids.length < size * size
+            || colors.length < size * size) return;
+        int hw = size + 2;
+        boolean heights = floors != null && floors.length == hw * hw;
+        for (int z = 0; z < size; ++z) for (int x = 0; x < size; ++x) {
+            int i = z * size + x;
+            if ((ids[i] & 0xffff) >= LIMIT || colors[i] < 0) continue;
+            int delta = -8;
+            if (heights) {
+                if (waterBiome(ids[i] & 0xffff)) {
+                    float depth = Math.max(0, 62 - floors[(z + 1) * hw + x + 1]);
+                    delta -= Math.round(Math.min(24, depth * 0.65F));
+                } else {
+                    float slope = (floors[(z + 2) * hw + x + 2] - floors[z * hw + x]) / (2.0F * step);
+                    if (Float.isFinite(slope)) delta += Math.round(Math.max(-28, Math.min(28, slope * 65)));
+                }
+            }
+            argb[i] = shade((argb[i] & 0xff000000) | colors[i], delta);
+        }
+    }
+
+    /** Vanilla-backed surface colours and heights, all with the same one-sample halo. */
+    public static void applySurface(int[] argb, short[] ids, int step, int size,
+                                    float[] heights, float[] floors, int[] colors) {
+        int hw = size + 2;
+        int count = size * size;
+        if (size <= 0 || step <= 0 || heights == null || floors == null || colors == null
+            || heights.length != hw * hw || floors.length != hw * hw || colors.length != hw * hw
+            || argb.length < count || ids.length < count) return;
+        for (int z = 0; z < size; ++z) {
+            for (int x = 0; x < size; ++x) {
+                int i = z * size + x;
+                int h = (z + 1) * hw + x + 1;
+                if ((ids[i] & 0xFFFF) >= LIMIT || colors[h] < 0
+                    || !Float.isFinite(heights[h]) || !Float.isFinite(floors[h])) continue;
+                float depth = heights[h] - floors[h];
+                int delta = -8;
+                if (depth > 0.5F) {
+                    delta -= Math.round(Math.min(24.0F, depth * 0.65F));
+                } else {
+                    float slope = (heights[(z + 2) * hw + x + 2] - heights[z * hw + x]) / (2.0F * step);
+                    if (Float.isFinite(slope)) delta += Math.round(Math.max(-28.0F, Math.min(28.0F, slope * 65.0F)));
+                }
+                argb[i] = shade((argb[i] & 0xFF000000) | (colors[h] & 0xFFFFFF), delta);
+            }
+        }
+    }
+
+    /**
+     * End islands: shades the engine's density-based island heights (0 is void, left untouched)
+     * with the same north-west light. {@code heights} is the (size+2)^2 grid with a one-sample halo;
+     * a missing or wrong-sized grid leaves the tile flat. Alpha and biome ids are never changed.
+     */
+    public static void applyEnd(int[] argb, short[] ids, int originX, int originZ, int step, int size, float[] heights) {
+        int hw = size + 2;
+        if (heights == null || heights.length != hw * hw || argb.length < size * size || ids.length < size * size) return;
+        for (int z = 0; z < size; ++z) {
+            for (int x = 0; x < size; ++x) {
+                int i = z * size + x;
+                if ((ids[i] & 0xFFFF) >= LIMIT || heights[(z + 1) * hw + x + 1] <= 0.0F) {
+                    continue; // void and unknown samples keep their colour
+                }
+                float slope = (heights[(z + 2) * hw + x + 2] - heights[z * hw + x]) / (2.0F * step);
+                int delta = Math.round(Math.max(-40.0F, Math.min(40.0F, slope * 120.0F)));
+                delta += (int) (hash(originX / step + x, originZ / step + z, 0x5EED5L) % 7) - 3; // grain
+                argb[i] = shade(argb[i], delta);
+            }
+        }
+    }
+
+    /**
+     * Nether cave-mode surface: heights are the predicted surface at the map layer (see
+     * sax_nether_floor_area_sampled). Columns below the lava sea (y 31) become lava; other ground is
+     * shaded by slope with the north-west light. Same {@code (size+2)^2} halo grid as the End.
+     */
+    public static void applyNether(int[] argb, short[] ids, int originX, int originZ, int step, int size, float[] heights) {
+        int hw = size + 2;
+        if (heights == null || heights.length != hw * hw || argb.length < size * size || ids.length < size * size) return;
+        for (int z = 0; z < size; ++z) {
+            for (int x = 0; x < size; ++x) {
+                int i = z * size + x;
+                if ((ids[i] & 0xFFFF) >= LIMIT) continue;
+                float h = heights[(z + 1) * hw + x + 1];
+                int grain = (int) (hash(originX / step + x, originZ / step + z, 0x4E7BL) % 5) - 2;
+                if (h < 31.0F) {
+                    argb[i] = shade((argb[i] & 0xFF000000) | 0xE0600A, grain * 2);
+                    continue;
+                }
+                float slope = (heights[(z + 2) * hw + x + 2] - heights[z * hw + x]) / (2.0F * step);
+                int delta = Math.round(Math.max(-45.0F, Math.min(45.0F, slope * 60.0F)));
+                argb[i] = shade(argb[i], delta + grain - 10);
+            }
+        }
+    }
 
     /** Cosmetic-noise relief; see {@link #apply(int[], short[], int, int, int, int, long, float[])}. */
     public static void apply(int[] argb, short[] ids, int originX, int originZ, int step, int size, long seed) {
@@ -91,11 +188,6 @@ public final class BiomeTerrainStyler {
                         delta = Math.round(lit * amp * 3.2F) + Math.round(height(wx, wz, seed) * amp * 0.5F);
                     }
                     delta += (int) (hash(wx / step, wz / step, seed) % 9) - 4; // per-block grain
-                    if (CANOPY[bid] && step <= 4) {
-                        long h = hash(Math.floorDiv(wx, step), Math.floorDiv(wz, step), seed ^ 0x5DEECE66DL);
-                        if (h % 100 < 42) delta -= 30; // tree crown
-                        else if (h % 100 < 50) delta += 12; // lit gap
-                    }
                     delta -= 14; // Xaero's explored land reads darker and more muted
                 } else {
                     if (real) {

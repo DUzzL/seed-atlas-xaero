@@ -197,6 +197,57 @@ public final class SeedAtlasNative implements AutoCloseable {
         }
     }
 
+    /** True when the loaded library can compute density-derived Nether floors (ABI 6+). */
+    public boolean supportsNetherFloor() {
+        return bindings.supportsNetherFloor();
+    }
+
+    public boolean supportsNetherCarving() {
+        return bindings.supportsNetherCarving();
+    }
+
+    /**
+     * Density-only Nether cave-floor height at layer y, row-major (see
+     * sax_nether_floor_area_sampled). Steps 1..16; the origin may be a halo.
+     */
+    public float[] netherFloorArea(int originBlockX, int originBlockZ, int y,
+                                   int sampleStep, int sampleWidth, int sampleHeight) {
+        return netherFloorArea(originBlockX, originBlockZ, y, sampleStep, sampleWidth, sampleHeight, null);
+    }
+
+    /** Optional seed-derived carved-air bits: two words per sample covering Y 0..127. */
+    public float[] netherFloorArea(int originBlockX, int originBlockZ, int y,
+                                  int sampleStep, int sampleWidth, int sampleHeight, long[] carved) {
+        validateArea(sampleStep, sampleWidth, sampleHeight);
+        if (!bindings.supportsNetherFloor()) {
+            throw new NativeException("Native library does not provide the Nether floor");
+        }
+        int sampleCount = Math.multiplyExact(sampleWidth, sampleHeight);
+        if (carved != null) {
+            if (carved.length != Math.multiplyExact(sampleCount, 2)) {
+                throw new IllegalArgumentException("Nether carving masks require two words per sample");
+            }
+            if (!bindings.supportsNetherCarving()) {
+                throw new NativeException("Native library does not support Nether carving masks");
+            }
+        }
+        lifecycleLock.readLock().lock();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment context = context();
+            MemorySegment out = arena.allocate(ValueLayout.JAVA_FLOAT, sampleCount);
+            int result = carved == null
+                ? bindings.netherFloorAreaSampled(context, originBlockX, originBlockZ, y,
+                    sampleStep, sampleWidth, sampleHeight, out, sampleCount)
+                : bindings.netherFloorAreaCarvedSampled(context, originBlockX, originBlockZ, y,
+                    sampleStep, sampleWidth, sampleHeight, arena.allocateFrom(ValueLayout.JAVA_LONG, carved),
+                    carved.length, out, sampleCount);
+            checkError(result, "compute the Nether floor");
+            return out.toArray(ValueLayout.JAVA_FLOAT);
+        } finally {
+            lifecycleLock.readLock().unlock();
+        }
+    }
+
     public ScanResult structures(StructureType type, BlockBox box, int maxResults,
                                  boolean biomeCheck) {
         Objects.requireNonNull(type, "type");

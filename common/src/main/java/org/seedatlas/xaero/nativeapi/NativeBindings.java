@@ -7,10 +7,12 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 
 final class NativeBindings {
-    static final int EXPECTED_ABI = 5;
-    /** ABI 4 libraries still load for biomes/structures but cannot supply heights. */
+    static final int EXPECTED_ABI = 6;
+    /** ABI 4/5 libraries still load for biomes/structures but lack newer terrain data. */
     static final int MIN_ABI = 4;
     static final int CAP_HEIGHTS = 1 << 9;
+    static final int CAP_NETHER_FLOOR = 1 << 10;
+    static final int CAP_NETHER_CARVING = 1 << 11;
 
     private final NativeLibraryLoader.LoadedNative library;
     private final MethodHandle abiVersion;
@@ -23,6 +25,8 @@ final class NativeBindings {
     private final MethodHandle biomeChunkSampled;
     private final MethodHandle biomeAreaSampled;
     private final MethodHandle heightAreaSampled;
+    private final MethodHandle netherFloorAreaSampled;
+    private final MethodHandle netherFloorAreaCarvedSampled;
     private final MethodHandle biomeName;
     private final MethodHandle biomeColor;
     private final MethodHandle scanStructures;
@@ -86,6 +90,21 @@ final class NativeBindings {
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT)))
             .orElse(null);
+        netherFloorAreaSampled = symbols.find("sax_nether_floor_area_sampled")
+            .map(symbol -> java.lang.foreign.Linker.nativeLinker().downcallHandle(symbol,
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT)))
+            .orElse(null);
+        netherFloorAreaCarvedSampled = symbols.find("sax_nether_floor_area_carved_sampled")
+            .map(symbol -> java.lang.foreign.Linker.nativeLinker().downcallHandle(symbol,
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT)))
+            .orElse(null);
     }
 
     static NativeBindings load() {
@@ -102,6 +121,45 @@ final class NativeBindings {
     boolean supportsHeights() {
         return heightAreaSampled != null && abiVersion() >= 5
             && (capabilities() & CAP_HEIGHTS) != 0;
+    }
+
+    boolean supportsNetherFloor() {
+        return netherFloorAreaSampled != null && abiVersion() >= 6
+            && (capabilities() & CAP_NETHER_FLOOR) != 0;
+    }
+
+    boolean supportsNetherCarving() {
+        return supportsNetherFloor() && netherFloorAreaCarvedSampled != null
+            && (capabilities() & CAP_NETHER_CARVING) != 0;
+    }
+
+    int netherFloorAreaCarvedSampled(MemorySegment context, int originBlockX, int originBlockZ,
+                                     int y, int sampleStep, int sampleWidth, int sampleHeight,
+                                     MemorySegment carved, int carvedCapacity,
+                                     MemorySegment heights, int capacity) {
+        if (netherFloorAreaCarvedSampled == null) {
+            throw new NativeException("Native library does not support Nether carving masks");
+        }
+        try {
+            return (int) netherFloorAreaCarvedSampled.invokeExact(context, originBlockX, originBlockZ,
+                y, sampleStep, sampleWidth, sampleHeight, carved, carvedCapacity, heights, capacity);
+        } catch (Throwable error) {
+            throw callFailure("sax_nether_floor_area_carved_sampled", error);
+        }
+    }
+
+    int netherFloorAreaSampled(MemorySegment context, int originBlockX, int originBlockZ,
+                               int y, int sampleStep, int sampleWidth, int sampleHeight,
+                               MemorySegment heights, int capacity) {
+        if (netherFloorAreaSampled == null) {
+            throw new NativeException("Native library does not provide the Nether floor");
+        }
+        try {
+            return (int) netherFloorAreaSampled.invokeExact(context, originBlockX, originBlockZ,
+                y, sampleStep, sampleWidth, sampleHeight, heights, capacity);
+        } catch (Throwable error) {
+            throw callFailure("sax_nether_floor_area_sampled", error);
+        }
     }
 
     int heightAreaSampled(MemorySegment context, int dimension, int originBlockX,

@@ -16,6 +16,9 @@ public final class StructureProgressTest {
                  "seeds":{"server-a":{"input":"123","value":123,"label":"A"}}}
                 """);
             var config = SeedAtlasConfigIO.load(file);
+            check(!config.overlayExplored(), "Old configs keep predictions beneath explored terrain");
+            check(config.setOverlayExplored(true), "Enable overlay above explored terrain");
+            check(!config.setOverlayExplored(true), "Repeated overlay toggle is idempotent");
             check(!config.hideCompletedStructures(), "Old configs must show completed structures");
             var key = new StructureKey("server-a", 123, false, "minecraft:overworld", "village", -128, 256);
             check(config.setCompleted(key, true), "First completion");
@@ -23,6 +26,10 @@ public final class StructureProgressTest {
             check(!config.hideCompletedStructures(), "Completing must not enable hiding");
             SeedAtlasConfigIO.save(file, config);
             var loaded = SeedAtlasConfigIO.load(file);
+            check(loaded.overlayExplored(), "Overlay preference survives reload");
+            loaded.setOverlayExplored(false);
+            SeedAtlasConfigIO.save(file, loaded);
+            check(!SeedAtlasConfigIO.load(file).overlayExplored(), "Overlay off survives reload");
             check(loaded.isCompleted(key), "Completion survives reload");
             check(loaded.opacity() == 180 && loaded.structuresEnabled() && !loaded.markerEnabled("village"), "Preserve existing settings");
             check(loaded.seedProfile("server-a").seed() == 123, "Preserve seed profiles");
