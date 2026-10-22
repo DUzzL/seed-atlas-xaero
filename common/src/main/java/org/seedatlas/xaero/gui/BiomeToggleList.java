@@ -3,7 +3,7 @@ package org.seedatlas.xaero.gui;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -23,7 +23,7 @@ import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 
-/** Biome selector with the same rows, switches and scrollbar as the structure selector. */
+/** Biome selector with the same rows, switches and scrollbar as the structure selector; or one button per biome. */
 final class BiomeToggleList extends AbstractWidget {
 	private static final int ROW_HEIGHT = 28;
 	private static final int ROW_GAP = 2;
@@ -38,8 +38,11 @@ final class BiomeToggleList extends AbstractWidget {
 	private final List<Row> allRows = new ArrayList<>();
 	private List<Row> rows = this.allRows;
 	private final Runnable onChange;
-	private Predicate<BiomeSample> isOn = m -> SeedAtlasClientState.config().isBiomeHighlighted(m.id());
+	private final Predicate<BiomeSample> isOn = m -> SeedAtlasClientState.config().isBiomeHighlighted(m.id());
 	private Consumer<BiomeSample> flip = m -> SeedAtlasClientState.toggleHighlightedBiome(m.id());
+	/** Set in button mode: the label every row's button shows instead of its on/off state. */
+	private Component actionLabel;
+	private BooleanSupplier actionsEnabled = () -> true;
 	private double scrollAmount;
 	private boolean draggingScrollbar;
 
@@ -52,10 +55,11 @@ final class BiomeToggleList extends AbstractWidget {
 		}
 	}
 
-	/** Use a caller-owned selection instead of the saved highlight set. */
-	void useSelection(final Set<Integer> selected) {
-		this.isOn = m -> selected.contains(m.id());
-		this.flip = m -> { if (!selected.remove(m.id())) selected.add(m.id()); };
+	/** One-shot buttons instead of switches: each press runs the action, and nothing stays selected. */
+	void useAction(final Component label, final BooleanSupplier enabled, final Consumer<BiomeSample> action) {
+		this.actionLabel = label;
+		this.actionsEnabled = enabled;
+		this.flip = action;
 	}
 
 	void setFilter(final String query) {
@@ -141,7 +145,8 @@ final class BiomeToggleList extends AbstractWidget {
 				int toggleX = contentRight - TOGGLE_WIDTH - 4;
 				int toggleY = y + (ROW_HEIGHT - TOGGLE_HEIGHT) / 2;
 				if (mouseX >= toggleX && mouseX < toggleX + TOGGLE_WIDTH
-					&& mouseY >= toggleY && mouseY < toggleY + TOGGLE_HEIGHT) {
+					&& mouseY >= toggleY && mouseY < toggleY + TOGGLE_HEIGHT
+					&& this.actionsEnabled.getAsBoolean()) {
 					row.toggle();
 					this.playDownSound(this.minecraft.getSoundManager());
 				}
@@ -263,12 +268,14 @@ final class BiomeToggleList extends AbstractWidget {
 			final int mouseY,
 			final float partialTick
 		) {
-			boolean enabled = BiomeToggleList.this.isOn.test(this.marker);
 			int right = x + width;
 			int bottom = y + ROW_HEIGHT;
 			int background = hovered ? 0x70474747 : (index & 1) == 0 ? 0x301C1C1C : 0x40242424;
 			graphics.fill(x, y, right, bottom, background);
-			graphics.fill(x, y + 2, x + 2, bottom - 2, enabled ? 0xFF55AA55 : 0xFF555555);
+			if (BiomeToggleList.this.actionLabel == null) {
+				boolean enabled = BiomeToggleList.this.isOn.test(this.marker);
+				graphics.fill(x, y + 2, x + 2, bottom - 2, enabled ? 0xFF55AA55 : 0xFF555555);
+			}
 
 			int swatchX = x + 7;
 			int swatchY = y + (ROW_HEIGHT - 18) / 2;
@@ -278,6 +285,7 @@ final class BiomeToggleList extends AbstractWidget {
 			int toggleX = right - TOGGLE_WIDTH - 4;
 			int toggleY = y + (ROW_HEIGHT - TOGGLE_HEIGHT) / 2;
 			this.toggle.setMessage(toggleMessage(this.marker));
+			this.toggle.active = BiomeToggleList.this.actionsEnabled.getAsBoolean();
 			// Minecraft 26.2: setRectangle(width, height, x, y)
 			this.toggle.setRectangle(TOGGLE_WIDTH, TOGGLE_HEIGHT, toggleX, toggleY);
 			this.toggle.extractRenderState(graphics, mouseX, mouseY, partialTick);
@@ -304,6 +312,6 @@ final class BiomeToggleList extends AbstractWidget {
 	}
 
 	private Component toggleMessage(final BiomeSample marker) {
-		return SeedAtlasSettingsScreen.toggleValue(this.isOn.test(marker));
+		return this.actionLabel != null ? this.actionLabel : SeedAtlasSettingsScreen.toggleValue(this.isOn.test(marker));
 	}
 }

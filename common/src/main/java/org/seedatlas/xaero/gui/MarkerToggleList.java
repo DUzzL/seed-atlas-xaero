@@ -3,7 +3,7 @@ package org.seedatlas.xaero.gui;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -25,7 +25,7 @@ import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.icon.StructureIcons;
 
 /**
- * Compact, Xaero-like structure selector.
+ * Compact, Xaero-like structure selector, with a switch or a one-shot button per row.
  *
  * <p>Minecraft 26.2 changed selection-list layout enough that the stock
  * ContainerObjectSelectionList produced broken hitboxes and a dead scrollbar.
@@ -44,9 +44,12 @@ final class MarkerToggleList extends AbstractWidget {
 	private final Minecraft minecraft;
 	private final List<Row> allRows = new ArrayList<>();
 	private List<Row> rows = this.allRows;
-	private Predicate<MarkerType> isOn = m -> SeedAtlasClientState.config().markerEnabled(m.id());
+	private final Predicate<MarkerType> isOn = m -> SeedAtlasClientState.config().markerEnabled(m.id());
 	private Consumer<MarkerType> flip = m ->
 		SeedAtlasClientState.setMarkerEnabled(m.id(), !SeedAtlasClientState.config().markerEnabled(m.id()));
+	/** Set in button mode: the label every row's button shows instead of its on/off state. */
+	private Component actionLabel;
+	private BooleanSupplier actionsEnabled = () -> true;
 	private double scrollAmount;
 	private boolean draggingScrollbar;
 
@@ -54,13 +57,11 @@ final class MarkerToggleList extends AbstractWidget {
 		this(minecraft, x, y, width, height, MarkerType.all());
 	}
 
-	/** Use a caller-owned selection instead of the saved marker toggles. */
-	void useSelection(final Set<MarkerType> selected, final Runnable onChange) {
-		this.isOn = selected::contains;
-		this.flip = m -> {
-			if (!selected.remove(m)) selected.add(m);
-			onChange.run();
-		};
+	/** One-shot buttons instead of switches: each press runs the action, and nothing stays selected. */
+	void useAction(final Component label, final BooleanSupplier enabled, final Consumer<MarkerType> action) {
+		this.actionLabel = label;
+		this.actionsEnabled = enabled;
+		this.flip = action;
 	}
 
 	MarkerToggleList(final Minecraft minecraft, final int x, final int y, final int width, final int height, final List<MarkerType> types) {
@@ -154,7 +155,8 @@ final class MarkerToggleList extends AbstractWidget {
 				int toggleX = contentRight - TOGGLE_WIDTH - 4;
 				int toggleY = y + (ROW_HEIGHT - TOGGLE_HEIGHT) / 2;
 				if (mouseX >= toggleX && mouseX < toggleX + TOGGLE_WIDTH
-					&& mouseY >= toggleY && mouseY < toggleY + TOGGLE_HEIGHT) {
+					&& mouseY >= toggleY && mouseY < toggleY + TOGGLE_HEIGHT
+					&& this.actionsEnabled.getAsBoolean()) {
 					row.toggle();
 					this.playDownSound(this.minecraft.getSoundManager());
 				}
@@ -275,12 +277,14 @@ final class MarkerToggleList extends AbstractWidget {
 			final int mouseY,
 			final float partialTick
 		) {
-			boolean enabled = MarkerToggleList.this.isOn.test(this.marker);
 			int right = x + width;
 			int bottom = y + ROW_HEIGHT;
 			int background = hovered ? 0x70474747 : (index & 1) == 0 ? 0x301C1C1C : 0x40242424;
 			graphics.fill(x, y, right, bottom, background);
-			graphics.fill(x, y + 2, x + 2, bottom - 2, enabled ? 0xFF55AA55 : 0xFF555555);
+			if (MarkerToggleList.this.actionLabel == null) {
+				boolean enabled = MarkerToggleList.this.isOn.test(this.marker);
+				graphics.fill(x, y + 2, x + 2, bottom - 2, enabled ? 0xFF55AA55 : 0xFF555555);
+			}
 
 			var structureIcon = StructureIcons.get(this.marker.id());
 			var layout = structureIcon.layout();
@@ -303,6 +307,7 @@ final class MarkerToggleList extends AbstractWidget {
 			int toggleX = right - TOGGLE_WIDTH - 4;
 			int toggleY = y + (ROW_HEIGHT - TOGGLE_HEIGHT) / 2;
 			this.toggle.setMessage(toggleMessage(this.marker));
+			this.toggle.active = MarkerToggleList.this.actionsEnabled.getAsBoolean();
 			// Minecraft 26.2: setRectangle(width, height, x, y)
 			this.toggle.setRectangle(TOGGLE_WIDTH, TOGGLE_HEIGHT, toggleX, toggleY);
 			this.toggle.extractRenderState(graphics, mouseX, mouseY, partialTick);
@@ -329,6 +334,6 @@ final class MarkerToggleList extends AbstractWidget {
 	}
 
 	private Component toggleMessage(final MarkerType marker) {
-		return SeedAtlasSettingsScreen.toggleValue(this.isOn.test(marker));
+		return this.actionLabel != null ? this.actionLabel : SeedAtlasSettingsScreen.toggleValue(this.isOn.test(marker));
 	}
 }
