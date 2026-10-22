@@ -210,18 +210,37 @@ public final class BiomeAreaFfmTest {
         for (GameVersion version : GameVersion.ALL) {
             assert SeedAtlasNative.supports(version) : version;
         }
-        assert !SeedAtlasNative.supports(new GameVersion("1.17"));
+        assert !SeedAtlasNative.supports(new GameVersion("1.0", "1.0"));
+        assert GameVersion.parse("1.20.1").orElseThrow().name().equals("1.20.6");
+        assert GameVersion.parse("26.1").orElseThrow().label().equals("1.21.5 – 26.1.2");
+        assert GameVersion.parse("1.0").isEmpty() && GameVersion.parse("27.1").isEmpty();
+        assert !GameVersion.parse("1.17.1").orElseThrow().hasTerrain() && GameVersion.parse("1.18").orElseThrow().hasTerrain();
         BlockBox box = new BlockBox(-4096, -4096, 4096, 4096);
         try (SeedAtlasNative newest = SeedAtlasNative.open(8371904829L, WorldType.NORMAL);
-             SeedAtlasNative older = SeedAtlasNative.open(8371904829L, WorldType.NORMAL, new GameVersion("1.20"))) {
-            assert older.gameVersion().name().equals("1.20");
+             SeedAtlasNative older = SeedAtlasNative.open(8371904829L, WorldType.NORMAL, GameVersion.parse("1.20").orElseThrow())) {
+            assert older.gameVersion().name().equals("1.20.6");
             // Trial Chambers arrived in 1.21: an empty scan for 1.20, not an error.
             assert older.structures(StructureType.TRIAL_CHAMBERS, box, 64, false).positions().isEmpty();
             assert !newest.structures(StructureType.TRIAL_CHAMBERS, box, 64, false).positions().isEmpty();
             assert !older.structures(StructureType.VILLAGE, box, 64, false).positions().isEmpty();
         }
+        // Layered generation before 1.18: biomes and structures, no terrain.
+        try (SeedAtlasNative layered = SeedAtlasNative.open(8371904829L, WorldType.NORMAL, GameVersion.parse("1.12.2").orElseThrow())) {
+            for (int argb : layered.biomeArea(Dimension.OVERWORLD, 0, 0, 64, 8, 32, 32).argbSamples()) assert argb != 0;
+            for (int argb : layered.biomeArea(Dimension.OVERWORLD, 0, 0, 64, 1024, 4, 4).argbSamples()) assert argb != 0;
+            assert layered.biomeName(3).equals("minecraft:extreme_hills") || layered.biomeName(3).equals("minecraft:mountains");
+            boolean noHeights = false;
+            try {
+                layered.heightArea(Dimension.OVERWORLD, 0, 0, 4, 2, 2);
+            } catch (NativeException expected) {
+                noHeights = true;
+            }
+            assert noHeights;
+            assert !layered.structures(StructureType.VILLAGE, box, 64, false).positions().isEmpty();
+            assert layered.structures(StructureType.ORE_VEIN, box, 64, false).positions().isEmpty();
+        }
         boolean rejected = false;
-        try (SeedAtlasNative ignored = SeedAtlasNative.open(1L, WorldType.NORMAL, new GameVersion("1.12"))) {
+        try (SeedAtlasNative ignored = SeedAtlasNative.open(1L, WorldType.NORMAL, new GameVersion("1.0", "1.0"))) {
             // unreachable
         } catch (NativeException expected) {
             rejected = true;

@@ -46,7 +46,8 @@ public final class IconLayoutTest {
                 count++;
             }
         }
-        check(count == 29, "Every bundled structure and helper icon must be checked");
+        // The other markers show Minecraft's own block and item textures, which are never bundled.
+        check(count == 5, "Every bundled pixel-art icon must be checked");
         BufferedImage camp = ImageIO.read(directory.resolve("camp.png").toFile());
         BufferedImage special = ImageIO.read(directory.resolve("camp_special.png").toFile());
         for (BufferedImage image : new BufferedImage[]{camp, special}) {

@@ -6,6 +6,7 @@ import java.util.Locale;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -22,6 +23,7 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import org.seedatlas.xaero.config.MarkerType;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
+import org.seedatlas.xaero.integration.icon.CompletedBadge;
 import org.seedatlas.xaero.integration.icon.StructureIcons;
 
 /**
@@ -38,6 +40,7 @@ final class MarkerToggleList extends AbstractWidget {
 	private static final int ICON_SIZE = 20;
 	private static final int TOGGLE_WIDTH = 56;
 	private static final int TOGGLE_HEIGHT = 20;
+	private static final int RESET_WIDTH = 40;
 	private static final int SCROLLBAR_WIDTH = 6;
 	private static final int SCROLLBAR_PAD = 3;
 
@@ -50,6 +53,9 @@ final class MarkerToggleList extends AbstractWidget {
 	/** Set in button mode: the label every row's button shows instead of its on/off state. */
 	private Component actionLabel;
 	private BooleanSupplier actionsEnabled = () -> true;
+	/** Set when every row also offers to reset its completed structures. */
+	private ToIntFunction<MarkerType> completedCount;
+	private Consumer<MarkerType> resetCompleted;
 	private double scrollAmount;
 	private boolean draggingScrollbar;
 
@@ -62,6 +68,12 @@ final class MarkerToggleList extends AbstractWidget {
 		this.actionLabel = label;
 		this.actionsEnabled = enabled;
 		this.flip = action;
+	}
+
+	/** Adds a button left of each switch that resets the completed structures of that type. */
+	void useReset(final ToIntFunction<MarkerType> count, final Consumer<MarkerType> reset) {
+		this.completedCount = count;
+		this.resetCompleted = reset;
 	}
 
 	MarkerToggleList(final Minecraft minecraft, final int x, final int y, final int width, final int height, final List<MarkerType> types) {
@@ -154,6 +166,14 @@ final class MarkerToggleList extends AbstractWidget {
 			if (mouseY >= y && mouseY < rowBottom) {
 				int toggleX = contentRight - TOGGLE_WIDTH - 4;
 				int toggleY = y + (ROW_HEIGHT - TOGGLE_HEIGHT) / 2;
+				int resetX = toggleX - RESET_WIDTH - 4;
+				if (this.resetCompleted != null && mouseX >= resetX && mouseX < resetX + RESET_WIDTH
+					&& mouseY >= toggleY && mouseY < toggleY + TOGGLE_HEIGHT
+					&& this.completedCount.applyAsInt(row.marker) > 0) {
+					this.playDownSound(this.minecraft.getSoundManager());
+					this.resetCompleted.accept(row.marker);
+					return;
+				}
 				if (mouseX >= toggleX && mouseX < toggleX + TOGGLE_WIDTH
 					&& mouseY >= toggleY && mouseY < toggleY + TOGGLE_HEIGHT
 					&& this.actionsEnabled.getAsBoolean()) {
@@ -254,11 +274,14 @@ final class MarkerToggleList extends AbstractWidget {
 	private final class Row {
 		private final MarkerType marker;
 		private final Button toggle;
+		private final Button reset;
 
 		private Row(final MarkerType marker) {
 			this.marker = marker;
 			this.toggle = Button.builder(toggleMessage(marker), button -> {
 			}).bounds(0, 0, TOGGLE_WIDTH, TOGGLE_HEIGHT).build();
+			this.reset = Button.builder(Component.empty(), button -> {
+			}).bounds(0, 0, RESET_WIDTH, TOGGLE_HEIGHT).build();
 		}
 
 		private void toggle() {
@@ -312,8 +335,36 @@ final class MarkerToggleList extends AbstractWidget {
 			this.toggle.setRectangle(TOGGLE_WIDTH, TOGGLE_HEIGHT, toggleX, toggleY);
 			this.toggle.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
+			int nameRight = toggleX;
+			if (MarkerToggleList.this.resetCompleted != null) {
+				int completed = MarkerToggleList.this.completedCount.applyAsInt(this.marker);
+				int resetX = toggleX - RESET_WIDTH - 4;
+				this.reset.active = completed > 0;
+				this.reset.setRectangle(RESET_WIDTH, TOGGLE_HEIGHT, resetX, toggleY);
+				this.reset.extractRenderState(graphics, mouseX, mouseY, partialTick);
+				// The completed badge and how many of this type are completed.
+				var font = MarkerToggleList.this.minecraft.font;
+				String count = Integer.toString(completed);
+				int contentWidth = CompletedBadge.SOURCE_SIZE + 3 + font.width(count);
+				int badgeX = resetX + (RESET_WIDTH - contentWidth) / 2;
+				int badgeY = toggleY + (TOGGLE_HEIGHT - CompletedBadge.SOURCE_SIZE) / 2;
+				graphics.blit(RenderPipelines.GUI_TEXTURED, CompletedBadge.TEXTURE, badgeX, badgeY, 0.0F, 0.0F,
+					CompletedBadge.SOURCE_SIZE, CompletedBadge.SOURCE_SIZE, CompletedBadge.SOURCE_SIZE, CompletedBadge.SOURCE_SIZE);
+				graphics.text(font, count, badgeX + CompletedBadge.SOURCE_SIZE + 3,
+					toggleY + (TOGGLE_HEIGHT - font.lineHeight) / 2 + 1, completed > 0 ? 0xFFFFFFFF : 0xFFA0A0A0);
+				if (completed == 0) {
+					graphics.fill(badgeX, badgeY, badgeX + CompletedBadge.SOURCE_SIZE, badgeY + CompletedBadge.SOURCE_SIZE, 0x90303030);
+				}
+				if (completed > 0 && mouseX >= resetX && mouseX < resetX + RESET_WIDTH
+					&& mouseY >= toggleY && mouseY < toggleY + TOGGLE_HEIGHT) {
+					graphics.setTooltipForNextFrame(Component.translatable(
+						"tooltip.seedatlas_xaero.reset_completed_type", this.marker.displayName()), mouseX, mouseY);
+				}
+				nameRight = resetX;
+			}
+
 			int nameX = x + 6 + ICON_SIZE + 8;
-			int available = Math.max(0, toggleX - 8 - nameX);
+			int available = Math.max(0, nameRight - 8 - nameX);
 			FormattedCharSequence name = clippedName(this.marker.displayName(), available);
 			int nameY = y + (ROW_HEIGHT - MarkerToggleList.this.minecraft.font.lineHeight) / 2;
 			graphics.text(MarkerToggleList.this.minecraft.font, name, nameX, nameY, 0xFFFFFFFF);

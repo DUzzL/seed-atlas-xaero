@@ -137,7 +137,7 @@ public final class SeedAtlasCommands {
 			version = GameVersion.parse(input).orElse(null);
 			if (version == null) {
 				source.sendError(Component.translatable("command.seedatlas_xaero.game_version_unknown", input.trim(),
-					String.join(", ", GameVersion.ALL.stream().map(GameVersion::name).toList())));
+					GameVersion.ALL.getLast().first(), GameVersion.NEWEST.name()));
 				return 0;
 			}
 			if (!SeedAtlasNative.supports(version)) {
@@ -164,12 +164,12 @@ public final class SeedAtlasCommands {
 		return 1;
 	}
 
-	/** "26.2", or "Auto (26.3)" while the context follows the running game. */
+	/** "1.21.5 – 26.1.2", or "Auto (26.3)" while the context follows the running game. */
 	public static Component gameVersionName() {
 		GameVersion version = SeedAtlasClientState.activeGameVersion();
 		return SeedAtlasClientState.gameVersionAutomatic()
 			? Component.translatable("options.seedatlas_xaero.game_version.auto", version.name())
-			: Component.literal(version.name());
+			: Component.literal(version.label());
 	}
 
 	private static int clearSeed(final SeedAtlasCommandSource source) {

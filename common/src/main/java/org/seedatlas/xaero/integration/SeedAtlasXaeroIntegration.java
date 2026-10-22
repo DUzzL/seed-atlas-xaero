@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalLong;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -35,7 +36,8 @@ public final class SeedAtlasXaeroIntegration {
     private static volatile boolean heavyWorkPaused;
     private static final StateRevisionTracker REVISIONS = new StateRevisionTracker();
     private static volatile double observedMapScale = 1.0;
-    private static volatile List<BiomeSample> availableBiomes;
+    /** Biomes of the version they were listed for; versions differ in biomes and their names. */
+    private static volatile Map.Entry<GameVersion, List<BiomeSample>> availableBiomes;
     private static boolean initialized;
     /** One engine context per seed; up to three when every dimension has its own seed. */
     private static final int MAX_SESSIONS = 3;
@@ -193,13 +195,14 @@ public final class SeedAtlasXaeroIntegration {
     }
 
     /**
-     * Every biome of the running Minecraft version, sorted by resource name. Requires a native
+     * Every biome of the active world's Minecraft version, sorted by resource name. Requires a native
      * session, so the list is empty while no seed is configured.
      */
     public static List<BiomeSample> availableBiomes() {
-        List<BiomeSample> cached = availableBiomes;
-        if (cached != null) {
-            return cached;
+        GameVersion version = SeedAtlasClientState.activeGameVersion();
+        Map.Entry<GameVersion, List<BiomeSample>> cached = availableBiomes;
+        if (cached != null && cached.getKey().equals(version)) {
+            return cached.getValue();
         }
         List<BiomeSample> found = withAnySession(session -> {
             List<BiomeSample> biomes = new ArrayList<>();
@@ -216,7 +219,7 @@ public final class SeedAtlasXaeroIntegration {
         if (found == null || found.isEmpty()) {
             return List.of();
         }
-        availableBiomes = found;
+        availableBiomes = Map.entry(version, found);
         return found;
     }
 

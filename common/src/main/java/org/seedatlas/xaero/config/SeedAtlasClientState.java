@@ -140,7 +140,8 @@ public final class SeedAtlasClientState {
 		if (context.key().isEmpty()) {
 			throw new IllegalStateException("No active world or server context");
 		}
-		String stored = version == null || version.isNewest() ? null : version.name();
+		// An explicit choice stays put when a later mod update moves the automatic version on.
+		String stored = version == null ? null : version.name();
 		if (config.setGameVersion(context.key(), stored)) {
 			saveAndPublish(ChangeReason.WORLD_GENERATION);
 		}
@@ -400,6 +401,21 @@ public final class SeedAtlasClientState {
 
 	public static void setStructureCompleted(SeedAtlasConfig.StructureKey key, boolean completed) {
 		if (config().setCompleted(key, completed)) save();
+	}
+
+	/** Completed structures of the active world or server, of one marker type or ({@code null}) all. */
+	public static int completedCount(final MarkerType type) {
+		String world = currentContextKey();
+		return world.isEmpty() ? 0 : config().completedCount(world, type == null ? null : type.id());
+	}
+
+	/** Marks the active world's completed structures of one type or ({@code null}) all as not completed. */
+	public static int resetCompleted(final MarkerType type) {
+		String world = currentContextKey();
+		if (world.isEmpty()) return 0;
+		int removed = config().resetCompleted(world, type == null ? null : type.id());
+		if (removed > 0) save();
+		return removed;
 	}
 
 	public static void setBiomeResolution(final int resolution) {

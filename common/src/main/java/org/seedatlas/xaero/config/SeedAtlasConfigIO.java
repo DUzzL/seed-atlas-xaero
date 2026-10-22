@@ -57,7 +57,7 @@ final class SeedAtlasConfigIO {
 					if (!entry.isJsonObject() || !entry.getAsJsonObject().has("seed")
 						|| !entry.getAsJsonObject().has("x") || !entry.getAsJsonObject().has("z")) continue;
 					try {
-						config.setCompleted(GSON.fromJson(entry, SeedAtlasConfig.StructureKey.class), true);
+						config.restoreCompleted(GSON.fromJson(entry, SeedAtlasConfig.StructureKey.class));
 					} catch (RuntimeException ignored) {
 						// A malformed marker must not discard other saved settings or progress.
 					}

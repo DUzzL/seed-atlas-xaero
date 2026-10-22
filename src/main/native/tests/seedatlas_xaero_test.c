@@ -486,10 +486,12 @@ int main(void)
         assert((sax_capabilities() & SAX_CAP_MC_VERSIONS) != 0);
         assert(sax_mc_version_supported("26.2") == 1);
         assert(sax_mc_version_supported("1.18") == 1);
-        assert(sax_mc_version_supported("1.17") == 0);
+        assert(sax_mc_version_supported("1.17.1") == 1);
+        assert(sax_mc_version_supported("1.1") == 1);
+        assert(sax_mc_version_supported("1.0") == 0);
         assert(sax_mc_version_supported("not a version") == 0);
         assert(sax_mc_version_supported(NULL) == 0);
-        assert(sax_create_versioned(1, SAX_WORLD_NORMAL, "1.16") == NULL);
+        assert(sax_create_versioned(1, SAX_WORLD_NORMAL, "Beta 1.7") == NULL);
 
         older = sax_create_versioned(INT64_C(8371904829), SAX_WORLD_NORMAL, "26.3");
         assert(older != NULL);
@@ -511,6 +513,53 @@ int main(void)
         assert(sax_scan_structures(older, SAX_VILLAGE,
                    -4096, -4096, 4096, 4096, 0, results, 64) > 0);
         sax_destroy(older);
+    }
+
+    /* Layered generation before 1.18: every map step works, terrain is unavailable. */
+    {
+        const char *layered[] = {"1.17.1", "1.12.2", "1.7.10", "1.1"};
+        const int32_t steps[] = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024};
+        static int32_t area_ids[64 * 64];
+        static uint32_t area_argb[64 * 64];
+        float heights[4];
+        for (int v = 0; v < 4; ++v) {
+            sax_context *old = sax_create_versioned(INT64_C(8371904829), SAX_WORLD_NORMAL, layered[v]);
+            assert(old != NULL);
+            assert(sax_context_has_terrain(old) == 0);
+            for (int s = 0; s < 11; ++s) {
+                int32_t step = steps[s];
+                assert(sax_biome_area_sampled(old, SAX_DIM_OVERWORLD, -32 * step, 64 * step, 64,
+                    step, 64, 64, area_ids, area_argb, 64 * 64) == SAX_OK);
+                for (i = 0; i < 64 * 64; ++i)
+                    assert(area_ids[i] >= 0 && area_argb[i] != 0);
+            }
+            if (v == 0) {
+                /* A coarse step keeps the centre samples of the finer layer. */
+                static int32_t fine[128 * 128];
+                assert(sax_biome_area_sampled(old, SAX_DIM_OVERWORLD, 0, 0, 64, 4, 128, 128,
+                    fine, NULL, 128 * 128) == SAX_OK);
+                assert(sax_biome_area_sampled(old, SAX_DIM_OVERWORLD, 0, 0, 64, 8, 64, 64,
+                    area_ids, NULL, 64 * 64) == SAX_OK);
+                for (i = 0; i < 64 * 64; ++i)
+                    assert(area_ids[i] == fine[(i / 64 * 2 + 1) * 128 + i % 64 * 2 + 1]);
+            }
+            assert(sax_height_area_sampled(old, SAX_DIM_OVERWORLD, 0, 0, 4, 2, 2, heights, 4) == SAX_ERR_UNSUPPORTED);
+            assert(sax_height_area_sampled(old, SAX_DIM_END, 0, 0, 4, 2, 2, heights, 4) == SAX_ERR_UNSUPPORTED);
+            assert(sax_nether_floor_area_sampled(old, 0, 0, 64, 4, 2, 2, heights, 4) == SAX_ERR_UNSUPPORTED);
+            assert(sax_scan_structures(old, SAX_ORE_VEIN, -512, -512, 512, 512, 0, results, 64) == 0);
+            assert(sax_scan_structures(old, SAX_VILLAGE, -4096, -4096, 4096, 4096, 0, results, 64) > 0);
+            assert(sax_scan_strongholds(old, -30000, -30000, 30000, 30000, 0, results, 64) > 0);
+            assert(sax_spawn(old, 0, position) == SAX_OK);
+            sax_destroy(old);
+        }
+        {
+            sax_context *old = sax_create_versioned(INT64_C(8371904829), SAX_WORLD_NORMAL, "1.17.1");
+            /* id 3 is "mountains" before 1.18 and "windswept_hills" since. */
+            assert(sax_context_biome_name(old, 3, name, sizeof(name)) > 1 && strcmp(name, "mountains") == 0);
+            assert(sax_context_biome_name(context, 3, name, sizeof(name)) > 1 && strcmp(name, "windswept_hills") == 0);
+            assert(sax_context_has_terrain(context) == 1);
+            sax_destroy(old);
+        }
     }
 
     assert(sax_spawn(context, 0, position) == SAX_OK);

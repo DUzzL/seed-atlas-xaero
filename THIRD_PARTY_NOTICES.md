@@ -2,18 +2,18 @@
 
 ## Seed Atlas and Cubiomes Viewer
 
-The generation engine and structure icons are sourced from
+The generation engine and the bundled Seed Atlas icons are sourced from
 https://github.com/DUzzL/Seed-Atlas at commit
 fc2c628693bc72130d7c16a21636f50d57553ddf. Seed Atlas derives from
 https://github.com/Cubitect/cubiomes-viewer (GPLv3).
 
 The Abandoned Camp markers use their own flat pixel-art tents: the normal camp
 motif follows the approved Seed Atlas-style tent design, and the special-loot
-tent is the same raster in blue. The mineshaft, ore vein, ruined portal, ocean
-ruin, bastion and fortress icons were redrawn for this mod, and the block-style
-icons (desert pyramid, jungle temple, monument, slime chunk, stronghold, village
-and buried treasure) use a tinted rim instead of their original black frame;
-the other structure icons retain their original designs.
+tent is the same raster in blue. The ruined portal icon was drawn for this mod;
+the swamp hut and igloo icons retain their Seed Atlas designs with a 1 px
+outline. All other markers show Minecraft block and item textures, which are
+read at runtime from the installed game or resource packs and are not
+distributed with this mod.
 
 ## cubiomes
 

@@ -1179,7 +1179,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             this.sequence = sequence;
             this.refining = refining;
             this.highlightMask = SeedAtlasBiomeOverlayRenderer.this.highlightMask;
-            this.terrainStyle = SeedAtlasClientState.config().terrainStyle();
+            // Versions before 1.18 have no noise-based terrain to predict: plain biome colours.
+            this.terrainStyle = SeedAtlasClientState.config().terrainStyle() && key.gameVersion().hasTerrain();
         }
 
         @Override

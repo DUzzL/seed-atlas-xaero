@@ -126,7 +126,7 @@ public final class SeedAtlasNative implements AutoCloseable {
             checkError(bindings.biomeAt(context, dimension.nativeId(), x, y, z, output),
                 "generate biome");
             int id = output.get(ValueLayout.JAVA_INT, 0);
-            return new BiomeSample(id, biomeName(id), bindings.biomeColor(id));
+            return new BiomeSample(id, biomeName(id), biomeColor(id));
         } finally {
             lifecycleLock.readLock().unlock();
         }
@@ -376,25 +376,40 @@ public final class SeedAtlasNative implements AutoCloseable {
         return nativeState.context();
     }
 
-    /** Resolves an engine biome id to a namespaced Minecraft resource name. */
+    /** Resolves an engine biome id to a namespaced resource name of this context's version. */
     public String biomeName(int id) {
-        int required = bindings.biomeName(id, MemorySegment.NULL, 0);
-        if (required <= 0) {
-            return "minecraft:unknown_" + id;
-        }
+        lifecycleLock.readLock().lock();
         try (Arena arena = Arena.ofConfined()) {
+            boolean own = bindings.supportsContextBiomes();
+            MemorySegment context = own ? context() : MemorySegment.NULL;
+            int required = own ? bindings.contextBiomeName(context, id, MemorySegment.NULL, 0)
+                : bindings.biomeName(id, MemorySegment.NULL, 0);
+            if (required <= 0) {
+                return "minecraft:unknown_" + id;
+            }
             MemorySegment output = arena.allocate(required);
-            int written = bindings.biomeName(id, output, required);
+            int written = own ? bindings.contextBiomeName(context, id, output, required)
+                : bindings.biomeName(id, output, required);
             if (written <= 0) {
                 return "minecraft:unknown_" + id;
             }
             return "minecraft:" + output.getString(0);
+        } finally {
+            lifecycleLock.readLock().unlock();
         }
     }
 
-    /** Resolves an engine biome id to an opaque ARGB color (0 for unknown). */
+    /** Resolves an engine biome id to an opaque ARGB color of this context's version (0 for unknown). */
     public int biomeColor(int id) {
-        return bindings.biomeColor(id);
+        if (!bindings.supportsContextBiomes()) {
+            return bindings.biomeColor(id);
+        }
+        lifecycleLock.readLock().lock();
+        try {
+            return bindings.contextBiomeColor(context(), id);
+        } finally {
+            lifecycleLock.readLock().unlock();
+        }
     }
 
     private static MemorySegment resultBuffer(Arena arena, int maxResults) {

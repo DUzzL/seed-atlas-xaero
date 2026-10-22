@@ -119,6 +119,11 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
         boolean completed = SeedAtlasStructureState.isCompleted(marker);
         // Completed markers fade by the configured amount; the reader hides them at 0 %.
         float alpha = completed ? SeedAtlasClientState.config().completedOpacityFraction() : 1.0F;
+        if (icon.block()) {
+            // Block textures are full squares: a dark frame keeps them apart from the map below.
+            int frame = Math.round(alpha * 0xC0) << 24 | 0x141414;
+            graphics.fill(layout.left() - 1, layout.top() - 1, layout.right() + 1, layout.bottom() + 1, frame);
+        }
         if (hovered) {
             // Outline only: keep the map visible through transparent icon pixels.
             int left = layout.left() - 1, top = layout.top() - 1;

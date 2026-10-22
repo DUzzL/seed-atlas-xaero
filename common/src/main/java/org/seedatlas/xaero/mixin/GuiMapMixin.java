@@ -7,12 +7,12 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.ExploredTerrainRenderTypes;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.integration.MapNavigator;
 import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
+import org.seedatlas.xaero.integration.gui.SeedAtlasSettingsButton;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -23,7 +23,6 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import xaero.lib.client.gui.widget.Tooltip;
 import xaero.map.gui.GuiMap;
-import xaero.map.gui.GuiTexturedButton;
 import xaero.map.gui.TooltipButton;
 
 /** Full-map-only controls and lifecycle gate for the seed layer. */
@@ -32,10 +31,6 @@ abstract class GuiMapMixin {
     /** Xaero's own bound with its "Unlimited zoom out" option: one pixel for 512 blocks. */
     @Unique
     private static final double SEED_ATLAS$MIN_SCALE = 0.001953125;
-    /** White 16x16 icon, tinted by Xaero's textured button like its own toolbar icons. */
-    @Unique
-    private static final Identifier SEED_ATLAS$SETTINGS_ICON =
-        Identifier.fromNamespaceAndPath("seedatlas_xaero", "textures/gui/settings.png");
 
     @Shadow
     private double cameraX;
@@ -119,8 +114,8 @@ abstract class GuiMapMixin {
         SeedAtlasXaeroIntegration.setFullMapActive(true);
 
         // Xaero reserves x=0 in 20px rows along the left edge. Its own buttons
-        // occupy h-40/-60/-100/-120; h-20 and h-80 are intentionally free.
-        // Matching those slots avoids the centered coordinate text at y=2.
+        // occupy h-40/-60/-100/-120; h-20 is free for SA, and the settings sit
+        // right beside it on the otherwise empty bottom row.
         int x = 0;
         int layerY = Math.max(0, map.height - 20);
         this.seedAtlas$layerButton = new TooltipButton(x, layerY, 20, 20,
@@ -131,11 +126,9 @@ abstract class GuiMapMixin {
         }, () -> new Tooltip(layerButtonText()));
         map.addButton(this.seedAtlas$layerButton);
 
-        int settingsY = Math.max(0, map.height - 80);
         Tooltip settingsTooltip = new Tooltip(Component.translatable("screen.seedatlas_xaero.settings"));
-        this.seedAtlas$settingsButton = new GuiTexturedButton(x, settingsY, 20, 20, 0, 0, 16, 16,
-            SEED_ATLAS$SETTINGS_ICON, button -> SeedAtlasClientState.openSettings(map),
-            () -> settingsTooltip, 16, 16);
+        this.seedAtlas$settingsButton = new SeedAtlasSettingsButton(x + 20, layerY,
+            button -> SeedAtlasClientState.openSettings(map), () -> settingsTooltip);
         map.addButton(this.seedAtlas$settingsButton);
 
         this.seedAtlas$displayedRevision = SeedAtlasClientState.revision();

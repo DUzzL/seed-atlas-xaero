@@ -349,7 +349,8 @@ final class SeedAtlasStructureMarkerSource {
                 dimension,
                 position.approximate(),
                 position.campBiomeId() >= 0 ? session.biomeName(position.campBiomeId()) : null,
-                position.hasSpecialLoot()
+                position.hasSpecialLoot(),
+                position.type() == StructureType.ORE_VEIN_COPPER
             ));
         }
         return output;

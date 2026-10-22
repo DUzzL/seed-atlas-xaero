@@ -43,7 +43,7 @@ public final class StructureProgressTest {
                 new StructureKey("server-a",123,false,"minecraft:the_nether","village",-128,256),
                 new StructureKey("server-a",123,false,"minecraft:overworld","outpost",-128,256),
                 new StructureKey("server-a",123,false,"minecraft:overworld","village",128,256),
-                new StructureKey("server-a",123,false,"minecraft:overworld","village",-128,257))) {
+                new StructureKey("server-a",123,false,"minecraft:overworld","village",-128,269))) {
                 check(!loaded.isCompleted(other), "Do not share progress across identities: " + other);
             }
             check(loaded.completedOpacity() == 100, "Completed structures start fully visible");
@@ -64,6 +64,7 @@ public final class StructureProgressTest {
             check(SeedAtlasConfigIO.load(legacyHide).completedOpacity() == 0, "Hidden completed structures stay hidden");
             Files.delete(legacyHide);
             gameVersions(file, loaded);
+            nearbyAndReset(file);
             loaded.setBiomeHighlightEnabled(true);
             loaded.toggleHighlightedBiome(1);
             loaded.toggleHighlightedBiome(27);
@@ -143,6 +144,41 @@ public final class StructureProgressTest {
         }
         config.putSeedProfile("server-a", base);
         config.removeSeedProfile("server-c");
+    }
+
+    /** A structure moved by a few blocks, e.g. by another Minecraft version, stays completed. */
+    private static void nearbyAndReset(final Path file) throws Exception {
+        var config = new SeedAtlasConfig();
+        var village = new StructureKey("w", 7, false, "minecraft:overworld", "village", 100, -200);
+        check(config.setCompleted(village, true), "Mark a village");
+        for (int[] offset : new int[][]{{0, 0}, {12, 0}, {-12, 12}, {5, -9}}) {
+            check(config.isCompleted(new StructureKey("w", 7, false, "minecraft:overworld", "village",
+                100 + offset[0], -200 + offset[1])), "Moved by a few blocks stays completed: " + offset[0] + "," + offset[1]);
+        }
+        check(!config.isCompleted(new StructureKey("w", 7, false, "minecraft:overworld", "village", 113, -200)),
+            "A structure 13 blocks away is another one");
+        check(!config.isCompleted(new StructureKey("w", 7, false, "minecraft:overworld", "slime", 100, -200)),
+            "Another type at the same place is not completed");
+        var slime = new StructureKey("w", 7, false, "minecraft:overworld", "slime", 0, 0);
+        config.setCompleted(slime, true);
+        check(!config.isCompleted(new StructureKey("w", 7, false, "minecraft:overworld", "slime", 16, 0)),
+            "Neighbouring slime chunks stay apart");
+        check(!config.setCompleted(new StructureKey("w", 7, false, "minecraft:overworld", "village", 104, -196), true),
+            "Marking the moved village again changes nothing");
+        SeedAtlasConfigIO.save(file, config);
+        var loaded = SeedAtlasConfigIO.load(file);
+        check(loaded.isCompleted(new StructureKey("w", 7, false, "minecraft:overworld", "village", 108, -205)),
+            "Tolerance survives a reload");
+        check(loaded.setCompleted(new StructureKey("w", 7, false, "minecraft:overworld", "village", 108, -205), false)
+            && !loaded.isCompleted(village), "Unmarking the moved structure clears the stored one");
+        loaded.setCompleted(village, true);
+        loaded.setCompleted(new StructureKey("other", 7, false, "minecraft:overworld", "village", 0, 0), true);
+        check(loaded.completedCount("w", null) == 2 && loaded.completedCount("w", "village") == 1,
+            "Counts per world and type");
+        check(loaded.resetCompleted("w", "slime") == 1 && loaded.isCompleted(village) && !loaded.isCompleted(slime),
+            "Resetting one type keeps the others");
+        check(loaded.resetCompleted("w", null) == 1 && loaded.completedCount("w", null) == 0, "Reset all of a world");
+        check(loaded.completedCount("other", null) == 1, "Other worlds keep their progress");
     }
 
     /** A server on another Minecraft release keeps its version; unknown names are dropped. */

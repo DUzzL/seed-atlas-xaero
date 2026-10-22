@@ -15,8 +15,10 @@
 
 #define SAX_CONTEXT_MAGIC UINT32_C(0x53415831)
 #define SAX_MAX_SCAN_CELLS INT64_C(4194304)
-/* Oldest selectable version: terrain heights and the Nether floor need 1.18+ noise. */
-#define SAX_MIN_MC MC_1_18
+/* Oldest selectable version. Terrain heights, the Nether floor and ore veins
+   follow the 1.18+ noise generation and are unsupported before SAX_TERRAIN_MC. */
+#define SAX_MIN_MC MC_1_1
+#define SAX_TERRAIN_MC MC_1_18
 
 struct sax_context {
     uint32_t magic;
@@ -98,15 +100,27 @@ static const Generator *context_biome_generator(const sax_context *context,
     return &context->biome_generators[2];
 }
 
+/* Scale the generator produces directly for sample_step: layered Overworld
+   generation (up to 1.17) only has the 1:4, 1:16, 1:64 and 1:256 layers. */
+static int32_t layered_scale(const Generator *generator, int32_t sample_step)
+{
+    int32_t scale = 256;
+    if (generator->dim != DIM_OVERWORLD || generator->mc >= MC_1_18 || sample_step < 4)
+        return sample_step;
+    while (scale > sample_step)
+        scale /= 4;
+    return scale;
+}
+
 static int sample_step_valid(int32_t sample_step)
 {
     return sample_step >= 1 && sample_step <= 1024 &&
            (sample_step & (sample_step - 1)) == 0;
 }
 
-static uint32_t color_from_table(unsigned char colors[256][3], int id)
+static uint32_t color_from_table(unsigned char colors[256][3], int mc, int id)
 {
-    if (id < 0 || id >= 256 || !biomeExists(MC_NEWEST, id))
+    if (id < 0 || id >= 256 || !biomeExists(mc, id))
         return 0;
     return UINT32_C(0xff000000) | ((uint32_t) colors[id][0] << 16) |
            ((uint32_t) colors[id][1] << 8) | (uint32_t) colors[id][2];
@@ -175,7 +189,7 @@ SAX_API uint32_t sax_capabilities(void)
 
 SAX_API int32_t sax_engine_version(char *out, int32_t capacity)
 {
-    return copy_string("seedatlas-engine MC 1.18-26.3 / ABI 6", out, capacity);
+    return copy_string("seedatlas-engine MC 1.1-26.3 / ABI 6", out, capacity);
 }
 
 SAX_API int32_t sax_mc_version_supported(const char *mc_version)
@@ -233,7 +247,7 @@ SAX_API sax_context *sax_create_versioned(int64_t seed, uint32_t world_flags,
     context->nether_noise.yFactor = 60;
     initBiomeColors(colors);
     for (i = 0; i < 256; ++i)
-        context->biome_argb[i] = color_from_table(colors, i);
+        context->biome_argb[i] = color_from_table(colors, mc, i);
     return context;
 }
 
@@ -474,6 +488,35 @@ SAX_API int32_t sax_biome_area_sampled(
                 }
             }
         }
+    }
+    else if (layered_scale(generator, sample_step) != sample_step) {
+        /* Sample a supported finer layer and keep the centre of every cell. */
+        int32_t base = layered_scale(generator, sample_step);
+        int32_t factor = sample_step / base;
+        int64_t dense_count = sample_count * factor * factor;
+        if (dense_count > INT64_C(4) * SAX_MAX_BIOME_AREA_SAMPLES)
+            return SAX_ERR_RANGE_TOO_LARGE;
+        range.scale = base;
+        range.x = origin_block_x / base;
+        range.z = origin_block_z / base;
+        range.sx = sample_width * factor;
+        range.sz = sample_height * factor;
+        range.y = floor_div(y, 4);
+        range.sy = 1;
+        cache = allocCache(generator, range);
+        if (!cache)
+            return SAX_ERR_ALLOCATION;
+        result = genBiomes(generator, cache, range);
+        if (result != 0) {
+            free(cache);
+            return SAX_ERR_GENERATION;
+        }
+        for (z = 0; z < sample_height; ++z)
+            for (x = 0; x < sample_width; ++x)
+                cache[(int64_t) z * sample_width + x] =
+                    cache[((int64_t) z * factor + factor / 2) * range.sx + (int64_t) x * factor + factor / 2];
+        if (out_ids)
+            memcpy(out_ids, cache, (size_t) sample_count * sizeof(*out_ids));
     }
     else {
         range.scale = sample_step;
@@ -735,7 +778,7 @@ SAX_API int32_t sax_height_area_sampled(
         sample_width <= 0 || sample_height <= 0 || output_capacity < 0 ||
         !context_valid(context) || !dimension_valid(dimension))
         return SAX_ERR_ARGUMENT;
-    if (dimension == SAX_DIM_NETHER)
+    if (dimension == SAX_DIM_NETHER || context->mc < SAX_TERRAIN_MC)
         return SAX_ERR_UNSUPPORTED;
     sample_count = (int64_t) sample_width * sample_height;
     if (sample_count > SAX_MAX_BIOME_AREA_SAMPLES)
@@ -953,7 +996,7 @@ static int32_t nether_floor_area(
         sample_width <= 0 || sample_height <= 0 || output_capacity < 0 ||
         !context_valid(context))
         return SAX_ERR_ARGUMENT;
-    if (sample_step > 16)
+    if (sample_step > 16 || context->mc < SAX_TERRAIN_MC)
         return SAX_ERR_UNSUPPORTED;
     sample_count = (int64_t) sample_width * sample_height;
     if (sample_count > SAX_MAX_BIOME_AREA_SAMPLES)
@@ -1050,11 +1093,30 @@ SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity)
     return copy_string(biome2str(MC_NEWEST, biome_id), out, capacity);
 }
 
+SAX_API int32_t sax_context_biome_name(const sax_context *context, int32_t biome_id,
+                                       char *out, int32_t capacity)
+{
+    if (!context_valid(context) || biome_id < 0 || biome_id >= 256 ||
+        !biomeExists(context->mc, biome_id))
+        return 0;
+    return copy_string(biome2str(context->mc, biome_id), out, capacity);
+}
+
+SAX_API uint32_t sax_context_biome_color(const sax_context *context, int32_t biome_id)
+{
+    return context_biome_color(context, biome_id);
+}
+
+SAX_API int32_t sax_context_has_terrain(const sax_context *context)
+{
+    return context_valid(context) && context->mc >= SAX_TERRAIN_MC;
+}
+
 SAX_API uint32_t sax_biome_color(int32_t biome_id)
 {
     unsigned char colors[256][3];
     initBiomeColors(colors);
-    return color_from_table(colors, biome_id);
+    return color_from_table(colors, MC_NEWEST, biome_id);
 }
 
 static Xoroshiro ore_random_at(Xoroshiro base, int x, int y, int z)
@@ -1176,6 +1238,8 @@ static int32_t scan_ore_veins(const sax_context *context, int32_t requested_type
     int32_t mx, mz;
     if (range_too_large(mx0, mz0, mx1, mz1))
         return SAX_ERR_RANGE_TOO_LARGE;
+    if (context->mc < SAX_TERRAIN_MC)
+        return 0;
     if (!init_ore_noise(&noise, context->seed))
         return SAX_ERR_GENERATION;
 
@@ -1443,6 +1507,10 @@ SAX_API int32_t sax_scan_strongholds(const sax_context *context,
     if (!context_valid(context) || !box_valid(min_x, min_z, max_x, max_z) ||
         capacity < 0 || (capacity > 0 && !out_results))
         return SAX_ERR_ARGUMENT;
+    /* Up to 1.19.2 the ring positions depend on the biome search itself, so the
+       engine always needs the generator and every position is exact. */
+    if (context->mc <= MC_1_19_2)
+        check_biome = 1;
     if (check_biome) {
         result = setup_dimension_generator(context, SAX_DIM_OVERWORLD, &generator);
         if (result != SAX_OK)

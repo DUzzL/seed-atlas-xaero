@@ -20,15 +20,17 @@ Singleplayer seeds are detected automatically. On multiplayer, set a known seed 
 - `/seedatlas version <version|auto>` sets the Minecraft version the world or server generates with, e.g. `26.2` when you join a 26.2 server with a 26.3 client; `auto` follows the running game.
 - `/seedatlas clear` removes the saved seeds.
 
-Use **SA** on the world map to toggle the layer and the slider button below it to open settings. Settings include structure filters, biome highlighting, opacity and performance controls. Structure context menus let you mark locations as completed and create waypoints when Xaero's Minimap is installed; **Completed** in the structure settings fades completed markers from 100 % (default) down to 0 % (hidden).
+Use **SA** on the world map to toggle the layer and the map button next to it to open settings. Settings include structure filters, biome highlighting, opacity and performance controls. Structure context menus let you mark locations as completed and create waypoints when Xaero's Minimap is installed; **Completed** in the structure settings fades completed markers from 100 % (default) down to 0 % (hidden). A completed structure stays completed when another Minecraft version moves it by up to 12 blocks. **Reset completed** clears all completed structures of the world or server, and the button beside each structure type clears just that type.
 
-**World** in the settings chooses the world type and the Minecraft version, per world or server. Versions 1.18 to 26.3 are available, named like in the Seed Atlas app (1.20 means the latest 1.20.x). Biomes and structures follow the chosen version; the terrain look always uses the running game's terrain.
+**World** in the settings chooses the world type and the Minecraft version, per world or server. The list holds only versions whose world generation differs, from 1.1 to 26.3 (for example 1.21.5 – 26.1.2 is one entry). Biomes and structures follow the chosen version; the terrain look needs 1.18 or newer and uses the running game's terrain. Older versions show plain biome colours.
+
+Most markers show a Minecraft block or item (a rail for mineshafts, an eye of ender for strongholds, raw iron or copper for ore veins); these textures come from the game or the active resource pack and are not part of the mod.
 
 **Overlay explored** (off by default) also draws the seed map over explored terrain; **Layer opacity** blends the two. Biome focus is always drawn on top.
 
 ## Accuracy
 
-Predictions cover vanilla Normal and Large Biomes worlds of Minecraft 1.18 to the version a release is built for. Custom world generation and modded dimensions are not supported. Some structures and spawn positions are approximate, so a marker does not guarantee a structure.
+Predictions cover vanilla Normal and Large Biomes worlds of Minecraft 1.1 to the version a release is built for. Custom world generation and modded dimensions are not supported. Some structures and spawn positions are approximate, so a marker does not guarantee a structure.
 
 The terrain look shows predicted ground, not explored blocks:
 

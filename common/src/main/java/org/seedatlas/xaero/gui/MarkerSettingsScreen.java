@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import org.seedatlas.xaero.config.MarkerType;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
 
@@ -35,16 +36,25 @@ public final class MarkerSettingsScreen extends SeedAtlasScreen {
 		int listHeight = Math.max(48, listBottom - listTop);
 
 		int headerGap = 6;
-		int headerHalf = (listWidth - headerGap) / 2;
-		this.addRenderableWidget(new CompletedOpacitySlider(listLeft, 40, headerHalf,
+		int headerThird = (listWidth - headerGap * 2) / 3;
+		this.addRenderableWidget(new CompletedOpacitySlider(listLeft, 40, headerThird,
 			SeedAtlasClientState.config().completedOpacity()));
 
 		this.addRenderableWidget(Button.builder(markerSizeMessage(), button -> {
 			SeedAtlasClientState.setMarkerSize(SeedAtlasConfig.nextMarkerSize(SeedAtlasClientState.config().markerSize()));
 			button.setMessage(markerSizeMessage());
-		}).bounds(listLeft + headerHalf + headerGap, 40, listWidth - headerHalf - headerGap, 20).build());
+		}).bounds(listLeft + headerThird + headerGap, 40, headerThird, 20).build());
 
-		this.addRenderableWidget(new MarkerToggleList(this.minecraft, listLeft, listTop, listWidth, listHeight));
+		int completed = SeedAtlasClientState.completedCount(null);
+		Button resetAll = this.addRenderableWidget(Button.builder(
+			Component.translatable("options.seedatlas_xaero.reset_completed", completed), button -> confirmReset(null))
+			.bounds(listLeft + (headerThird + headerGap) * 2, 40, listWidth - (headerThird + headerGap) * 2, 20)
+			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.reset_completed"))).build());
+		resetAll.active = completed > 0;
+
+		MarkerToggleList list = new MarkerToggleList(this.minecraft, listLeft, listTop, listWidth, listHeight);
+		list.useReset(SeedAtlasClientState::completedCount, this::confirmReset);
+		this.addRenderableWidget(list);
 
 		int doneWidth = Math.min(200, Math.max(120, this.width - 24));
 		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
@@ -64,6 +74,19 @@ public final class MarkerSettingsScreen extends SeedAtlasScreen {
 		graphics.centeredText(this.font, status, this.width / 2, 23, 0xFFB8B8B8);
 	}
 
+
+	/** Asks before marking the completed structures of one type, or ({@code null}) all, as not completed. */
+	private void confirmReset(final MarkerType type) {
+		int count = SeedAtlasClientState.completedCount(type);
+		if (count == 0) return;
+		Component world = Component.literal(SeedAtlasClientState.currentContextLabel());
+		Component message = type == null
+			? Component.translatable("screen.seedatlas_xaero.reset_completed.all", count, world)
+			: Component.translatable("screen.seedatlas_xaero.reset_completed.type", count, type.displayName(), world);
+		this.minecraft.gui.setScreen(new ConfirmResetScreen(this,
+			Component.translatable("screen.seedatlas_xaero.reset_completed.title"), message,
+			() -> SeedAtlasClientState.resetCompleted(type)));
+	}
 
 	private static Component markerSizeMessage() {
 		return Component.translatable("options.seedatlas_xaero.marker_size",

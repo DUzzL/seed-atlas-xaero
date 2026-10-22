@@ -23,6 +23,8 @@ final class NativeBindings {
     private final MethodHandle create;
     private final MethodHandle createVersioned;
     private final MethodHandle mcVersionSupported;
+    private final MethodHandle contextBiomeName;
+    private final MethodHandle contextBiomeColor;
     private final MethodHandle destroy;
     private final MethodHandle biomeAt;
     private final MethodHandle biomeChunk;
@@ -114,6 +116,15 @@ final class NativeBindings {
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS)))
             .orElse(null);
+        contextBiomeName = symbols.find("sax_context_biome_name")
+            .map(symbol -> Linker.nativeLinker().downcallHandle(symbol,
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT)))
+            .orElse(null);
+        contextBiomeColor = symbols.find("sax_context_biome_color")
+            .map(symbol -> Linker.nativeLinker().downcallHandle(symbol,
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT)))
+            .orElse(null);
         mcVersionSupported = symbols.find("sax_mc_version_supported")
             .map(symbol -> Linker.nativeLinker().downcallHandle(symbol,
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)))
@@ -150,6 +161,27 @@ final class NativeBindings {
     boolean supportsMcVersions() {
         return createVersioned != null && mcVersionSupported != null
             && (capabilities() & CAP_MC_VERSIONS) != 0;
+    }
+
+    /** Biome names and colours of the context's own version; false for libraries before version selection. */
+    boolean supportsContextBiomes() {
+        return contextBiomeName != null && contextBiomeColor != null;
+    }
+
+    int contextBiomeName(MemorySegment context, int id, MemorySegment out, int capacity) {
+        try {
+            return (int) contextBiomeName.invokeExact(context, id, out, capacity);
+        } catch (Throwable error) {
+            throw callFailure("sax_context_biome_name", error);
+        }
+    }
+
+    int contextBiomeColor(MemorySegment context, int id) {
+        try {
+            return (int) contextBiomeColor.invokeExact(context, id);
+        } catch (Throwable error) {
+            throw callFailure("sax_context_biome_color", error);
+        }
     }
 
     boolean mcVersionSupported(MemorySegment version) {

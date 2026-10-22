@@ -133,7 +133,8 @@ SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags);
  * Additive ABI 6 capability (SAX_CAP_MC_VERSIONS): generates the Minecraft
  * version named like the Seed Atlas app does ("26.2", "1.21.4", "1.20" for the
  * latest 1.20.x). NULL selects the newest version. Returns NULL for versions
- * before 1.18 or names the engine does not know.
+ * before 1.1 or names the engine does not know. Before 1.18 there are no
+ * terrain heights, Nether floors or ore veins (SAX_ERR_UNSUPPORTED / no results).
  */
 SAX_API sax_context *sax_create_versioned(int64_t seed, uint32_t world_flags,
                                           const char *mc_version);
@@ -231,6 +232,12 @@ SAX_API int32_t sax_nether_floor_area_carved_sampled(
 /* Returns required bytes including NUL; 0 means the id has no known name. */
 SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity);
 SAX_API uint32_t sax_biome_color(int32_t biome_id);
+/* The same for the context's version, e.g. "mountains" before 1.18 (SAX_CAP_MC_VERSIONS). */
+SAX_API int32_t sax_context_biome_name(const sax_context *context, int32_t biome_id,
+                                       char *out, int32_t capacity);
+SAX_API uint32_t sax_context_biome_color(const sax_context *context, int32_t biome_id);
+/* 1 when the context's version has terrain heights and Nether floors (1.18+). */
+SAX_API int32_t sax_context_has_terrain(const sax_context *context);
 
 /*
  * Finds starts/markers whose X/Z coordinate is inside the inclusive block
