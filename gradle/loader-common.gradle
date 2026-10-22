@@ -66,6 +66,11 @@ jar {
         workingDir atlasRoot
         mainClass = spec[2]
         jvmArgs '-ea', '--enable-native-access=ALL-UNNAMED', '-Djava.awt.headless=true'
+        // -PxaeroCompatJar=<jar> checks a newer Xaero release against these compiled classes.
+        def compatJar = providers.gradleProperty('xaeroCompatJar')
+        if (taskName == 'xaeroCompatibilityTest' && compatJar.isPresent()) {
+            systemProperty 'seedatlas.xaeroJar', compatJar.get()
+        }
     }
     tasks.named('check') { dependsOn checkTask }
 }

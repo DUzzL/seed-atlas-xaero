@@ -65,6 +65,7 @@
     "command.seedatlas_xaero.status.structures":  "Strukturen: %s",
     "command.seedatlas_xaero.status.native":  "Native Engine: %1$s (%2$s)",
     "command.seedatlas_xaero.status.native_unavailable":  "Native Engine nicht verfügbar: %s",
+    "message.seedatlas_xaero.xaero_incompatible":  "[Seed Atlas] Deaktiviert: Die installierte Xaero's World Map hat etwas geändert, worauf diese Seed-Atlas-Version angewiesen ist (%s). Xaeros Karte funktioniert normal; aktualisiere Seed Atlas, um die Seed-Karte wiederherzustellen.",
     "marker.seedatlas_xaero.camp":  "Verlassenes Lager",
     "tooltip.seedatlas_xaero.special_loot":  "Besondere Beute",
     "marker.seedatlas_xaero.ancient_city":  "Antike Stadt",

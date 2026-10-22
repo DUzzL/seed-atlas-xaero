@@ -453,6 +453,13 @@ public final class SeedAtlasClientState {
 
 	public static void openSettings(final Screen parent) {
 		initialize();
+		if (!org.seedatlas.xaero.SeedAtlasXaero.xaeroCompatible()) {
+			// The settings drive the Xaero integration, which stays off for this Xaero version.
+			if (Minecraft.getInstance().player != null) {
+				Minecraft.getInstance().player.sendSystemMessage(org.seedatlas.xaero.SeedAtlasXaero.incompatibleMessage());
+			}
+			return;
+		}
 		// Pause native/GPU work immediately so opening settings never keeps the
 		// map pipeline spinning underneath the menu.
 		org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);

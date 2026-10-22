@@ -6,6 +6,8 @@ A client-side addon that predicts biomes and structures from a world seed and di
 
 Install the Seed Atlas file for your **Minecraft version and mod loader** (Fabric, Forge or NeoForge), together with the matching [Xaero's World Map](https://modrinth.com/mod/xaeros-world-map) and its required dependencies. Fabric also requires Fabric API. See the selected release for compatible versions and requirements.
 
+Newer Xaero's World Map releases work without a Seed Atlas update. If one changes something Seed Atlas relies on, Seed Atlas switches itself off and says so in chat, while Xaero's map keeps working; a Seed Atlas update then restores the layer.
+
 Seed Atlas is only needed on the client. Native libraries are included for Windows x64, Linux x64, macOS x64 and macOS Apple Silicon.
 
 ## Usage

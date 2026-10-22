@@ -209,7 +209,7 @@ tasks.register('commandRegistrationTest', JavaExec) {
 }
 tasks.named('check') { dependsOn tasks.named('commandRegistrationTest') }
 
-// Validate Xaero's mixin targets and captured locals without launching Minecraft.
+// Run the runtime Xaero compatibility check (mixin targets, captured locals, linkage) without Minecraft.
 def xaeroTestClasses = layout.buildDirectory.dir('classes/xaeroCompatibilityTest')
 tasks.register('compileXaeroCompatibilityTest', JavaCompile) {
     dependsOn tasks.named('clientClasses')
@@ -221,5 +221,8 @@ tasks.register('xaeroCompatibilityTest', JavaExec) {
     dependsOn tasks.named('compileXaeroCompatibilityTest')
     classpath = files(xaeroTestClasses) + sourceSets.client.runtimeClasspath
     mainClass = 'org.seedatlas.xaero.integration.XaeroCompatibilityTest'
+    // -PxaeroCompatJar=<jar> checks a newer Xaero release against these compiled classes.
+    def compatJar = providers.gradleProperty('xaeroCompatJar')
+    if (compatJar.isPresent()) systemProperty 'seedatlas.xaeroJar', compatJar.get()
 }
 tasks.named('check') { dependsOn tasks.named('xaeroCompatibilityTest') }

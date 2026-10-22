@@ -28,6 +28,6 @@ side="CLIENT"
 [[dependencies.seedatlas_xaero]]
 modId="xaeroworldmap"
 mandatory=true
-versionRange="[${xaero_world_map_version}]"
+versionRange="[${xaero_world_map_version},)"
 ordering="AFTER"
 side="CLIENT"

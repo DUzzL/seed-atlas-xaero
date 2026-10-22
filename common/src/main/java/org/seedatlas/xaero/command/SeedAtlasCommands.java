@@ -6,6 +6,7 @@ import java.util.function.Function;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import net.minecraft.network.chat.Component;
+import org.seedatlas.xaero.SeedAtlasXaero;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.nativeapi.Dimension;
@@ -136,6 +137,9 @@ public final class SeedAtlasCommands {
 			return 0;
 		}
 
+		if (!SeedAtlasXaero.xaeroCompatible()) {
+			source.sendError(SeedAtlasXaero.incompatibleMessage());
+		}
 		source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.context", contextLabel));
 		SeedAtlasConfig.SeedProfile profile = SeedAtlasClientState.activeProfile().orElse(null);
 		if (profile == null) {
