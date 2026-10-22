@@ -426,9 +426,6 @@ public final class SeedAtlasClientState {
 			}
 			return;
 		}
-		// Pause native/GPU work immediately so opening settings never keeps the
-		// map pipeline spinning underneath the menu.
-		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		Minecraft.getInstance().gui.setScreen(new SeedAtlasSettingsScreen(parent));
 	}
 

@@ -7,7 +7,6 @@ import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
-import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 
 /** Performance controls consumed by the asynchronous map renderer. */
 public final class PerformanceSettingsScreen extends SeedAtlasScreen {
@@ -19,7 +18,6 @@ public final class PerformanceSettingsScreen extends SeedAtlasScreen {
 
 	@Override
 	protected void init() {
-		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		SeedAtlasConfig config = SeedAtlasClientState.config();
 		int contentWidth = Math.min(340, this.width - 20);
 		int left = (this.width - contentWidth) / 2;

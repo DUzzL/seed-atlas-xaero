@@ -4,9 +4,11 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
+import org.seedatlas.xaero.integration.ExploredTerrainRenderTypes;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.integration.MapNavigator;
 import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
@@ -15,6 +17,8 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import xaero.lib.client.gui.widget.Tooltip;
 import xaero.map.gui.GuiMap;
@@ -23,6 +27,10 @@ import xaero.map.gui.TooltipButton;
 /** Full-map-only controls and lifecycle gate for the seed layer. */
 @Mixin(value = GuiMap.class, remap = false)
 abstract class GuiMapMixin {
+    /** Xaero's own bound with its "Unlimited zoom out" option: one pixel for 512 blocks. */
+    @Unique
+    private static final double SEED_ATLAS$MIN_SCALE = 0.001953125;
+
     @Shadow
     private double cameraX;
     @Shadow
@@ -81,6 +89,21 @@ abstract class GuiMapMixin {
             this.cameraX, this.cameraZ, this.scale, flooredCameraX, flooredCameraZ,
             processor.getMultiTextureRenderTypeRenderers(), true
         );
+    }
+
+    // Unexplored texels must not darken explored terrain where the seed layer surrounds it.
+    @ModifyArg(method = "extractRenderState", at = @At(
+        value = "INVOKE",
+        target = "Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;getRenderer(Lnet/minecraft/client/renderer/rendertype/RenderType;)Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer;"
+    ))
+    private RenderType seedAtlas$exploredTerrainType(RenderType type) {
+        return ExploredTerrainRenderTypes.replace(type);
+    }
+
+    // The seed layer is made for overviews, so with it on the map zooms out as far as Xaero allows at all.
+    @ModifyVariable(method = "applyZoomLimits", at = @At("LOAD"), name = "minScale")
+    private double seedAtlas$zoomOutFurther(double minScale) {
+        return SeedAtlasXaeroIntegration.isLayerConfigured() ? Math.min(minScale, SEED_ATLAS$MIN_SCALE) : minScale;
     }
 
     @Inject(method = "init", at = @At("RETURN"))

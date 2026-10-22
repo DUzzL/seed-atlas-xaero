@@ -29,7 +29,6 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 
 	@Override
 	protected void init() {
-		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		SeedAtlasConfig config = SeedAtlasClientState.config();
 		int contentWidth = Math.min(340, this.width - 20);
 		int left = (this.width - contentWidth) / 2;

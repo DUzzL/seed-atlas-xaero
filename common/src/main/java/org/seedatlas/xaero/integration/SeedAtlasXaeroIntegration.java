@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.OptionalLong;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -20,14 +21,16 @@ import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.nativeapi.Dimension;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
+import xaero.lib.client.gui.IScreenBase;
 import xaero.map.WorldMapSession;
+import xaero.map.gui.GuiMap;
 
 /** Runtime boundary between Xaero, the adaptive overlay and the native engine. */
 public final class SeedAtlasXaeroIntegration {
     private static final Object NATIVE_LOCK = new Object();
 
     private static volatile boolean fullMapActive;
-    /** True while Seed Atlas settings (or nested screens) cover the world map. */
+    /** True while a Seed Atlas menu covers the world map without drawing it. */
     private static volatile boolean heavyWorkPaused;
     private static final StateRevisionTracker REVISIONS = new StateRevisionTracker();
     private static volatile double observedMapScale = 1.0;
@@ -107,6 +110,17 @@ public final class SeedAtlasXaeroIntegration {
         }
     }
 
+    /**
+     * Seed Atlas menus opened from the world map draw it behind them, so its layer stays live there,
+     * and changes show at once; a menu without the map behind it pauses the layer instead.
+     */
+    public static void setMapBehindMenu(boolean mapBehind) {
+        if (mapBehind) {
+            setFullMapActive(true);
+        }
+        setHeavyWorkPaused(!mapBehind);
+    }
+
     /** Applies configuration changes without touching Xaero's leaf-region cache. */
     public static void synchronizeRevision() {
         REVISIONS.synchronize(SeedAtlasClientState.revision(), heavyWorkPaused,
@@ -131,9 +145,15 @@ public final class SeedAtlasXaeroIntegration {
             level, cameraX, cameraZ, scale, viewportWidth, viewportHeight);
     }
 
-    /** Map-only maintenance: generates nothing while the map is closed or settings cover it. */
+    /** Map-only maintenance, including the map drawn behind Seed Atlas menus. */
     public static void tickBackground(Minecraft minecraft) {
         synchronizeRevision();
+        Screen screen = minecraft.gui.screen();
+        if (fullMapActive && !(screen instanceof GuiMap)
+            && !(screen instanceof IScreenBase menu && menu.getEscape() instanceof GuiMap)) {
+            // A menu over the map was closed without returning to it.
+            setFullMapActive(false);
+        }
         if (!fullMapActive || heavyWorkPaused) {
             return;
         }

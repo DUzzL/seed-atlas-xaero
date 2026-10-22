@@ -30,10 +30,10 @@ Predictions cover vanilla Normal and Large Biomes worlds of the Minecraft versio
 The terrain look shows predicted ground, not explored blocks:
 
 - **Overworld:** close-up views (up to 4 blocks per sample) use vanilla base terrain and aquifers for ground height and water. Grass, leaves and water use each biome's vanilla tint, as on Xaero's map. Surface rules, caves, trees and structures are not generated; forest tree crowns are decorative. A quick preview appears first and is refined in place, which can take a few seconds the first time.
-- **End:** island heights come from the generator density, up to 8 blocks per sample.
+- **End:** island outlines, end-stone colours and shading follow the generator density, up to 8 blocks per sample. Distant views use biome colours.
 - **Nether:** cave floors and lava seas come from terrain density and vanilla cave carvers, up to 4 blocks per sample. Xaero's Full cave mode scans from below the roof; other modes use the configured Nether Y.
 
-Distant views use coarser samples without fine shading. With unlimited-zoom addons, the biome layer pauses beyond its tile budget and returns when you zoom back in.
+Distant views use coarser samples without fine shading. With the seed layer enabled and a seed available, the map zooms out to one pixel per 512 blocks. Beyond its tile budget, the biome layer pauses and returns when you zoom back in.
 
 [Report an issue](https://github.com/DUzzL/seed-atlas-xaero/issues) with your Minecraft version, loader, mod versions and relevant logs.
 

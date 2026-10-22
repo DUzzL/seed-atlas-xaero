@@ -44,12 +44,14 @@ public final class XaeroCompatibility {
         "org/seedatlas/xaero/mixin/GuiMapMixin",
         "org/seedatlas/xaero/mixin/BranchTextureRendererMixin",
         "org/seedatlas/xaero/mixin/BranchRegionTextureMixin",
+        "org/seedatlas/xaero/mixin/BranchLeveledRegionMixin",
         "org/seedatlas/xaero/mixin/WorldMapClientOnlyMixin");
     /** Catches LinkageError itself and only loses waypoint shortcuts, so it never disables Seed Atlas. */
     private static final Set<String> OPTIONAL = Set.of(
         "org/seedatlas/xaero/integration/marker/SeedAtlasWaypointBridge");
     private static final String PROVIDER = "xaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider";
     private static final String RENDERER = "xaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer";
+    private static final String GET_RENDERER = "(Lnet/minecraft/client/renderer/rendertype/RenderType;)L" + RENDERER + ";";
 
     private static volatile Report current;
 
@@ -143,19 +145,34 @@ public final class XaeroCompatibility {
             }
             MethodNode render = method(map, "extractRenderState",
                 "(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V");
-            if (render != null) renderInjections(render);
+            if (render != null) {
+                renderInjections(render);
+                require(invokes(render, PROVIDER, "getRenderer", GET_RENDERER),
+                    "GuiMap.extractRenderState no longer picks the explored terrain's render type");
+            }
+            MethodNode zoom = method(map, "applyZoomLimits", "()V");
+            if (zoom != null) {
+                require(zoom.localVariables != null && zoom.localVariables.stream()
+                        .filter(local -> local.name.equals("minScale") && local.desc.equals("D")).count() == 1,
+                    "GuiMap.applyZoomLimits: local minScale is missing or ambiguous");
+            }
         }
         ClassNode branch = xaeroClass("xaero/map/region/texture/BranchTextureRenderer");
         if (branch != null) {
             field(branch, "black4f", "Lorg/joml/Vector4f;", false);
             require(branch.methods.stream().anyMatch(m -> m.name.equals("<init>")),
                 "BranchTextureRenderer has no constructor to inject into");
+            require(branch.methods.stream().filter(m -> m.name.equals("render")
+                    && invokes(m, PROVIDER, "getRenderer", GET_RENDERER)).count() == 1,
+                "BranchTextureRenderer.render no longer picks the branch render type");
         }
         ClassNode texture = xaeroClass("xaero/map/region/texture/BranchRegionTexture");
         if (texture != null) {
             require(texture.methods.stream().filter(m -> m.name.equals("readCacheData") && m.desc.endsWith(")V")).count() == 1,
                 "BranchRegionTexture.readCacheData changed");
         }
+        ClassNode branchRegion = xaeroClass("xaero/map/region/BranchLeveledRegion");
+        if (branchRegion != null) method(branchRegion, "findCacheFile", "(Lxaero/map/file/MapSaveLoad;)Ljava/io/File;");
         ClassNode clientOnly = xaeroClass("xaero/map/WorldMapClientOnly");
         if (clientOnly != null) method(clientOnly, "loadLaterClientRender", "()V");
     }
@@ -194,6 +211,16 @@ public final class XaeroCompatibility {
                 && method.instructions.indexOf(local.end) > index).count();
             require(matches == 1, "GuiMap.extractRenderState: captured local " + name + " is missing or ambiguous");
         }
+    }
+
+    private static boolean invokes(MethodNode method, String owner, String name, String descriptor) {
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof MethodInsnNode call && call.owner.equals(owner)
+                && call.name.equals(name) && call.desc.equals(descriptor)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private ClassNode xaeroClass(String name) {

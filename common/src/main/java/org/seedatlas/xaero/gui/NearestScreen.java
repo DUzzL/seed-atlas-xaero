@@ -41,7 +41,6 @@ public final class NearestScreen extends SeedAtlasScreen {
 
 	@Override
 	protected void init() {
-		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		var player = this.minecraft.player;
 		if (player == null) return;
 		this.level = player.level().dimension();

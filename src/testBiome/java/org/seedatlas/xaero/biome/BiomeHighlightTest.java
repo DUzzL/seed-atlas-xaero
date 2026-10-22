@@ -8,11 +8,13 @@ import org.seedatlas.xaero.integration.StateRevisionTracker;
 import org.seedatlas.xaero.integration.biome.BiomeHighlighter;
 import org.seedatlas.xaero.integration.biome.BiomeTerrainStyler;
 import org.seedatlas.xaero.integration.biome.BiomeViewportTest;
+import org.seedatlas.xaero.integration.biome.EndTerrainStylerTest;
 
 /** Verifies the Seed Atlas style highlight colours without opening a Minecraft client. */
 public final class BiomeHighlightTest {
     public static void main(String[] args) {
         BiomeViewportTest.run();
+        EndTerrainStylerTest.run();
         surfaceStyling();
         int[] argb = {0xFF3E6B3E, 0xFF2C4C6B, 0xFF808080};
         short[] ids = {1, 4, 1};
@@ -109,7 +111,7 @@ public final class BiomeHighlightTest {
         BiomeTerrainStyler.apply(fallbackB, hid, 0, 0, 4, hn, 5L, new float[3]);
         check(Arrays.equals(fallbackA, fallbackB), "A wrong-sized height grid falls back to the noise relief");
         System.out.println("Biome highlight colour and deferred revision tests passed");
-        // End: island slopes are shaded, void (height 0) and unknown samples keep their colour, bad grids are ignored.
+        // End: island slopes are shaded, height 0 becomes void, bad grids are ignored.
         int en = 6, ew = en + 2;
         float[] island = new float[ew * ew];
         for (int z = 0; z < ew; ++z) for (int x = 0; x < ew; ++x) island[z * ew + x] = (x >= 1 && z >= 1 && x <= 6 && z <= 6) ? 40 + (x + z) * 2 : 0;
@@ -123,7 +125,7 @@ public final class BiomeHighlightTest {
         int[] vcol = new int[en * en];
         Arrays.fill(vcol, 0xFFD9D99A);
         BiomeTerrainStyler.applyEnd(vcol, eid, 0, 0, 4, en, voidGrid);
-        check(vcol[0] == 0xFFD9D99A && vcol[en * en - 1] == 0xFFD9D99A, "End void keeps its colour");
+        check(vcol[0] == 0xFF1A1A2E && vcol[en * en - 1] == 0xFF1A1A2E, "End void replaces the biome colour");
         int[] badCol = new int[en * en];
         Arrays.fill(badCol, 0xFFD9D99A);
         BiomeTerrainStyler.applyEnd(badCol, eid, 0, 0, 4, en, new float[3]);

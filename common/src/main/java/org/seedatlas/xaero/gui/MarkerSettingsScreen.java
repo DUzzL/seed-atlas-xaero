@@ -7,7 +7,6 @@ import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
-import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 
 /** Scrollable, compact marker selector using Seed Atlas' original icons. */
 public final class MarkerSettingsScreen extends SeedAtlasScreen {
@@ -23,7 +22,6 @@ public final class MarkerSettingsScreen extends SeedAtlasScreen {
 
 	@Override
 	protected void init() {
-		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		int horizontalMargin = Math.min(16, Math.max(6, this.width / 18));
 		int listWidth = Math.min(MAX_LIST_WIDTH, Math.max(MIN_LIST_WIDTH, this.width - horizontalMargin * 2));
 		listWidth = Math.min(listWidth, this.width - 8);
