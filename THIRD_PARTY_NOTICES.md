@@ -9,8 +9,11 @@ https://github.com/Cubitect/cubiomes-viewer (GPLv3).
 
 The Abandoned Camp markers use their own flat pixel-art tents: the normal camp
 motif follows the approved Seed Atlas-style tent design, and the special-loot
-tent is the same raster in blue. The mineshaft icon was adapted for this mod
-with transparent gaps; the other structure icons retain their original designs.
+tent is the same raster in blue. The mineshaft, ore vein, ruined portal, ocean
+ruin, bastion and fortress icons were redrawn for this mod, and the block-style
+icons (desert pyramid, jungle temple, monument, slime chunk, stronghold, village
+and buried treasure) use a tinted rim instead of their original black frame;
+the other structure icons retain their original designs.
 
 ## cubiomes
 
