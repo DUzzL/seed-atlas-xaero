@@ -10,17 +10,15 @@ import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 
 /** Scrollable, compact marker selector using Seed Atlas' original icons. */
-public final class MarkerSettingsScreen extends Screen {
+public final class MarkerSettingsScreen extends SeedAtlasScreen {
 	private static final Component TITLE = Component.translatable("screen.seedatlas_xaero.markers");
 	private static final int HEADER_HEIGHT = 68;
 	private static final int FOOTER_HEIGHT = 38;
 	private static final int MAX_LIST_WIDTH = 420;
 	private static final int MIN_LIST_WIDTH = 180;
-	private final Screen parent;
 
 	public MarkerSettingsScreen(final Screen parent) {
-		super(TITLE);
-		this.parent = parent;
+		super(TITLE, parent);
 	}
 
 	@Override

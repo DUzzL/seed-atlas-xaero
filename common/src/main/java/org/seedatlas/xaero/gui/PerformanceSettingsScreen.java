@@ -10,13 +10,11 @@ import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 
 /** Performance controls consumed by the asynchronous map renderer. */
-public final class PerformanceSettingsScreen extends Screen {
+public final class PerformanceSettingsScreen extends SeedAtlasScreen {
 	private static final Component TITLE = Component.translatable("screen.seedatlas_xaero.performance");
-	private final Screen parent;
 
 	public PerformanceSettingsScreen(final Screen parent) {
-		super(TITLE);
-		this.parent = parent;
+		super(TITLE, parent);
 	}
 
 	@Override

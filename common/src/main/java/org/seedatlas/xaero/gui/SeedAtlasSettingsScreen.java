@@ -16,17 +16,15 @@ import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.Dimension;
 
 /** Compact main settings screen, visually kept close to Xaero's option menus. */
-public final class SeedAtlasSettingsScreen extends Screen {
+public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 	private static final Component TITLE = Component.translatable("screen.seedatlas_xaero.settings");
-	private final Screen parent;
 	private OpacitySlider opacity;
 	private EditBox overworldY;
 	private EditBox netherY;
 	private EditBox endY;
 
 	public SeedAtlasSettingsScreen(final Screen parent) {
-		super(TITLE);
-		this.parent = parent;
+		super(TITLE, parent);
 	}
 
 	@Override
