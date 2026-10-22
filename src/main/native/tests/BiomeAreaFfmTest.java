@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -10,6 +11,7 @@ import org.seedatlas.xaero.nativeapi.StructureType;
 import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.nativeapi.BiomeTile;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.NativeException;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
 
@@ -60,7 +62,7 @@ public final class BiomeAreaFfmTest {
             if (heights) {
                 float[] area = atlas.heightArea(Dimension.OVERWORLD, -517, 39, 4, 24, 24);
                 float[] again = atlas.heightArea(Dimension.OVERWORLD, -517, 39, 4, 24, 24);
-                assert area.length == 576 && java.util.Arrays.equals(area, again);
+                assert area.length == 576 && Arrays.equals(area, again);
                 float[] halo = atlas.heightArea(Dimension.OVERWORLD, -517 - 4, 39 - 4, 4, 26, 26);
                 for (int hz = 0; hz < 24; hz++) {
                     for (int hx = 0; hx < 24; hx++) {
@@ -70,7 +72,7 @@ public final class BiomeAreaFfmTest {
                 boolean nether = false;
                 try {
                     atlas.heightArea(Dimension.NETHER, 0, 0, 4, 4, 4);
-                } catch (org.seedatlas.xaero.nativeapi.NativeException expected) {
+                } catch (NativeException expected) {
                     nether = true;
                 }
                 assert nether;

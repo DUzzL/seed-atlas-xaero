@@ -1,5 +1,6 @@
 package org.seedatlas.xaero.compat;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,12 +28,9 @@ import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 
 /**
- * Decides, before any mixin is applied, whether the installed Xaero's World Map still provides
- * everything Seed Atlas uses: every referenced class, field and method, implementations for the
- * abstract methods of extended Xaero types, and the mixin targets with their injection points
- * and captured locals. Seed Atlas accepts newer Xaero versions without a release of its own;
- * when one of them changes something it relies on, the integration stays off instead of
- * crashing the game. Pure ASM: it must not load Minecraft or Xaero classes.
+ * Checks, before any mixin is applied, that the installed Xaero's World Map still has every class,
+ * member, injection point and captured local Seed Atlas uses. If not, the integration stays off
+ * instead of crashing the game. Pure ASM, so it never loads Minecraft or Xaero classes.
  */
 public final class XaeroCompatibility {
     /** Carries the verdict from the mixin plugin to mod code, which may use another class loader. */
@@ -78,7 +76,7 @@ public final class XaeroCompatibility {
                     ClassNode node = new ClassNode();
                     new ClassReader(stream).accept(node, 0);
                     return node;
-                } catch (java.io.IOException | RuntimeException exception) {
+                } catch (IOException | RuntimeException exception) {
                     return null;
                 }
             };
@@ -130,7 +128,7 @@ public final class XaeroCompatibility {
         }
     }
 
-    // --- Mixin targets: what javac cannot check for @Shadow, @Inject and @Local. -------------------
+    // Mixin targets: what javac cannot check for @Shadow, @Inject and @Local.
 
     private void mixinTargets() {
         ClassNode map = xaeroClass("xaero/map/gui/GuiMap");
@@ -221,7 +219,7 @@ public final class XaeroCompatibility {
         if (!condition) this.problems.add(problem);
     }
 
-    // --- Linkage: every Xaero class and member that Seed Atlas bytecode refers to. ------------------
+    // Linkage: every Xaero class and member that Seed Atlas bytecode refers to.
 
     private record Member(String owner, String name, String descriptor, boolean method) { }
 

@@ -1,7 +1,5 @@
-# Seed Atlas accepts newer Xaero's World Map releases without a release of its own and turns
-# itself off when one changes something it relies on. This daily check runs that same runtime
-# compatibility check against the newest Xaero release and opens an issue when it fails, so an
-# incompatible Xaero update is noticed before players report it.
+# Runs the runtime Xaero compatibility check against the newest Xaero's World Map release every
+# day and opens an issue when Seed Atlas would switch itself off with it.
 name: xaero-canary
 on:
   schedule:

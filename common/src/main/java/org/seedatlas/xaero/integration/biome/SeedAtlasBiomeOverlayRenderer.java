@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -46,13 +47,9 @@ import xaero.map.graphics.renderer.multitexture.MultiTextureRenderTypeRenderer;
 import xaero.map.graphics.renderer.multitexture.MultiTextureRenderTypeRendererProvider;
 
 /**
- * Adaptive viewport raster rendered underneath Xaero's explored terrain.
- *
- * <p>The old implementation asked Xaero's highlighter for millions of leaf
- * chunks and repeatedly rebuilt partially complete 512-block regions. This
- * renderer instead keeps the amount of native and GPU work proportional to
- * screen pixels: a visible tile contains either 256x256 close-up samples or
- * 128x128 coarse samples, regardless of zoom.</p>
+ * Adaptive viewport raster rendered underneath Xaero's explored terrain. Native and GPU work
+ * stays proportional to screen pixels: a visible tile holds 256x256 close-up or 128x128
+ * coarse samples at any zoom.
  */
 public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     SeedAtlasBiomeOverlayRenderer.OverlayProbe,
@@ -113,7 +110,6 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         new LinkedHashMap<>(64, 0.75F, true);
 
     private volatile boolean mapActive;
-    private volatile int currentSampleStep = 1;
     private volatile int netherSurfaceY = 64;
     private volatile GenerationSignature generationSignature;
     /** Empty while highlighting is off; otherwise a 256-entry lookup for the tile workers. */
@@ -168,10 +164,6 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             WORKERS.setCorePoolSize(1);
         }
         WORKERS.purge();
-    }
-
-    public int currentSampleStep() {
-        return this.currentSampleStep;
     }
 
     /** Called from the client thread whenever the persisted state revision changes. */
@@ -240,7 +232,6 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         int sampleStep = chooseSampleStep(scale);
         int textureSize = textureSizeForView(sampleStep, scale);
         int worldSize = Math.multiplyExact(sampleStep, textureSize);
-        this.currentSampleStep = sampleStep;
         int sampleY = SeedAtlasXaeroIntegration.yFor(level);
         if (dimension == Dimension.NETHER) {
             var mapSession = WorldMapSession.getCurrentSession();
@@ -290,8 +281,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
     /**
      * Optional low-priority ring around the player, only while the full map is
-     * open and Seed Atlas settings are not covering it. Never runs in normal
-     * gameplay — continuous prefetch was causing coil whine / GPU spin-up.
+     * open and Seed Atlas settings are not covering it. Never runs during normal
+     * gameplay, where continuous prefetching kept the GPU busy.
      */
     public void tickBackground(Minecraft minecraft) {
         if (minecraft == null || minecraft.level == null || minecraft.player == null
@@ -1203,7 +1194,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                             this.key.originBlockX - this.key.sampleStep,
                             this.key.originBlockZ - this.key.sampleStep, this.key.sampleStep,
                             this.key.textureSize + 2, this.key.textureSize + 2, this::isCurrent);
-                    } catch (java.util.concurrent.CancellationException cancelled) {
+                    } catch (CancellationException cancelled) {
                         return;
                     } catch (RuntimeException | LinkageError ignored) {
                         // Older/incompatible runtime: keep the existing native-height fallback.
@@ -1237,7 +1228,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                                     this.key.sampleStep,
                                     this.key.textureSize + 2,
                                     this.key.textureSize + 2,
-                                    // shortcut: coarse masks cost seconds per tile; keep density-only LODs until mask generation is cheaper.
+                                    // Carving masks take seconds per coarse tile, so coarser LODs use density only.
                                     session.supportsNetherCarving() && this.key.sampleStep <= 4 ? NetherCaveMask.area(this.key.seed,
                                         this.key.originBlockX - this.key.sampleStep,
                                         this.key.originBlockZ - this.key.sampleStep, this.key.sampleStep,

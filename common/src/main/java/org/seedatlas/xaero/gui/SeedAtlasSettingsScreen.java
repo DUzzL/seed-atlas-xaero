@@ -14,7 +14,6 @@ import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.Dimension;
-import xaero.map.gui.GuiMap;
 
 /** Compact main settings screen, visually kept close to Xaero's option menus. */
 public final class SeedAtlasSettingsScreen extends Screen {

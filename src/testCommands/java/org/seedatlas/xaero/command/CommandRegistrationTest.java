@@ -2,6 +2,7 @@ package org.seedatlas.xaero.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import java.util.ArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -51,7 +52,7 @@ public final class CommandRegistrationTest {
         check(dispatcher.parse("seedatlas dimension-seed overworld 1", true).getReader().canRead(),
             "The Overworld uses the base seed command");
         // Minecraft logs every ambiguity at startup; the tree must have none.
-        var ambiguities = new java.util.ArrayList<String>();
+        var ambiguities = new ArrayList<String>();
         dispatcher.findAmbiguities((parent, child, sibling, inputs) ->
             ambiguities.add(child.getName() + " / " + sibling.getName() + " " + inputs));
         check(ambiguities.isEmpty(), "Ambiguous client commands: " + ambiguities);

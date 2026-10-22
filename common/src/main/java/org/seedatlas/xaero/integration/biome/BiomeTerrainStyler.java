@@ -1,5 +1,7 @@
 package org.seedatlas.xaero.integration.biome;
 
+import java.util.Arrays;
+
 /**
  * Terrain look for seed-only tiles: surface colours, hill shading and water depth tones.
  * Detailed Overworld tiles use vanilla base terrain; fast previews share their palette with
@@ -12,8 +14,8 @@ public final class BiomeTerrainStyler {
     private static final int[] RELIEF = new int[LIMIT];
     private static final byte[] KIND = new byte[LIMIT];
     static {
-        java.util.Arrays.fill(KIND, LAND);
-        java.util.Arrays.fill(RELIEF, 14);
+        Arrays.fill(KIND, LAND);
+        Arrays.fill(RELIEF, 14);
         for (int id : new int[]{0, 10, 44, 45, 46, 47}) KIND[id] = WATER;
         for (int id : new int[]{24, 48, 49, 50}) KIND[id] = DEEP;
         for (int id : new int[]{7, 11}) KIND[id] = WATER;
@@ -241,7 +243,7 @@ public final class BiomeTerrainStyler {
         return Math.max(0, Math.min(255, (value & 0xFF) * (100 + percent) / 100));
     }
 
-    private static long hash(int x, int z, long seed) {
+    static long hash(int x, int z, long seed) {
         long h = seed ^ (x * 0x9E3779B97F4A7C15L) ^ (z * 0xC2B2AE3D27D4EB4FL);
         h ^= h >>> 32; h *= 0xD6E8FEB86659FD93L; h ^= h >>> 32;
         return h & Long.MAX_VALUE;

@@ -1,6 +1,7 @@
 package org.seedatlas.xaero.nativeapi;
 
 import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
@@ -84,21 +85,21 @@ final class NativeBindings {
             ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
         // Optional: absent from ABI 4 libraries, and only used when the capability bit is set.
         heightAreaSampled = symbols.find("sax_height_area_sampled")
-            .map(symbol -> java.lang.foreign.Linker.nativeLinker().downcallHandle(symbol,
+            .map(symbol -> Linker.nativeLinker().downcallHandle(symbol,
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT)))
             .orElse(null);
         netherFloorAreaSampled = symbols.find("sax_nether_floor_area_sampled")
-            .map(symbol -> java.lang.foreign.Linker.nativeLinker().downcallHandle(symbol,
+            .map(symbol -> Linker.nativeLinker().downcallHandle(symbol,
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT)))
             .orElse(null);
         netherFloorAreaCarvedSampled = symbols.find("sax_nether_floor_area_carved_sampled")
-            .map(symbol -> java.lang.foreign.Linker.nativeLinker().downcallHandle(symbol,
+            .map(symbol -> Linker.nativeLinker().downcallHandle(symbol,
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
@@ -323,7 +324,7 @@ final class NativeBindings {
                                          FunctionDescriptor descriptor) {
         MemorySegment symbol = symbols.find(name)
             .orElseThrow(() -> new NativeException("Native symbol is missing: " + name));
-        return java.lang.foreign.Linker.nativeLinker().downcallHandle(symbol, descriptor);
+        return Linker.nativeLinker().downcallHandle(symbol, descriptor);
     }
 
     private static NativeException callFailure(String function, Throwable error) {

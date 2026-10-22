@@ -2,7 +2,9 @@ package org.seedatlas.xaero.integration.biome;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
@@ -11,11 +13,14 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.SharedConstants;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderGetter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
 import net.minecraft.world.level.biome.Biomes;
@@ -204,12 +209,12 @@ public final class OverworldTerrainSamplerTest {
     }
 
     /** Common land biomes must stay distinguishable at every zoom, not collapse into one green. */
-    private static void biomeDistinction(net.minecraft.core.HolderGetter<net.minecraft.world.level.biome.Biome> registry) {
-        var keys = java.util.List.of(Biomes.PLAINS, Biomes.MEADOW, Biomes.FOREST, Biomes.BIRCH_FOREST, Biomes.DARK_FOREST,
+    private static void biomeDistinction(HolderGetter<Biome> registry) {
+        var keys = List.of(Biomes.PLAINS, Biomes.MEADOW, Biomes.FOREST, Biomes.BIRCH_FOREST, Biomes.DARK_FOREST,
                 Biomes.TAIGA, Biomes.OLD_GROWTH_SPRUCE_TAIGA, Biomes.JUNGLE, Biomes.SAVANNA, Biomes.SWAMP,
                 Biomes.CHERRY_GROVE, Biomes.PALE_GARDEN, Biomes.MANGROVE_SWAMP, Biomes.FLOWER_FOREST);
         for (int step : new int[]{1, 16, 1024}) {
-            var seen = new java.util.HashMap<Integer, String>();
+            var seen = new HashMap<Integer, String>();
             for (var key : keys) {
                 int color = average(registry.getOrThrow(key), step);
                 String previous = seen.put(color, key.identifier().getPath());
@@ -226,7 +231,7 @@ public final class OverworldTerrainSamplerTest {
         check(red(cherry) > red(jungle) + 20, "Cherry groves show pink crowns");
     }
 
-    private static void crownCoverage(net.minecraft.core.HolderGetter<net.minecraft.world.level.biome.Biome> registry) {
+    private static void crownCoverage(HolderGetter<Biome> registry) {
         var forest = registry.getOrThrow(Biomes.FOREST);
         int ground = BiomeSurfacePalette.ground(forest, 0, 70, 0, false, 63);
         int leaf = BiomeSurfacePalette.leaf(forest);
@@ -246,7 +251,7 @@ public final class OverworldTerrainSamplerTest {
     }
 
     /** Mean colour over a block area at one LOD, which is what a viewer perceives. */
-    private static int average(net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biome, int step) {
+    private static int average(Holder<Biome> biome, int step) {
         long r = 0, g = 0, b = 0, n = 0;
         for (int z = 0; z < 160; z += Math.min(step, 8)) for (int x = 0; x < 160; x += Math.min(step, 8)) {
             int color = OverworldTerrainSampler.surfaceColor(biome, x, 70, z, false, 63, step);

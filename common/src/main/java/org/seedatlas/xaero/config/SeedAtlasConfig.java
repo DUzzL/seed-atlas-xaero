@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import net.minecraft.resources.ResourceKey;
@@ -125,7 +126,7 @@ public final class SeedAtlasConfig {
 	}
 
 	synchronized boolean setCompleted(StructureKey key, boolean completed) {
-		java.util.Objects.requireNonNull(key);
+		Objects.requireNonNull(key);
 		return completed ? completedStructures.add(key) : completedStructures.remove(key);
 	}
 
@@ -428,10 +429,6 @@ public final class SeedAtlasConfig {
 				case END -> this.end;
 				case OVERWORLD -> null;
 			};
-		}
-
-		public SeedProfile withBase(final SeedValue value) {
-			return new SeedProfile(value, this.nether, this.end, this.contextLabel);
 		}
 
 		/** Replaces (or with {@code null} removes) the own seed of the Nether or End. */

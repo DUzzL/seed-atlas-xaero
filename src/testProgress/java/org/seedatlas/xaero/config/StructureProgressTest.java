@@ -1,6 +1,7 @@
 package org.seedatlas.xaero.config;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.seedatlas.xaero.config.SeedAtlasConfig.StructureKey;
 import org.seedatlas.xaero.nativeapi.Dimension;
@@ -97,7 +98,7 @@ public final class StructureProgressTest {
     }
 
     /** Issue #4: the Nether and End may use their own seeds; the base seed covers the rest. */
-    private static void dimensionSeeds(java.nio.file.Path file, SeedAtlasConfig config) throws Exception {
+    private static void dimensionSeeds(Path file, SeedAtlasConfig config) throws Exception {
         var base = config.seedProfile("server-a");
         check(base.seedFor(Dimension.NETHER).seed() == 123 && base.ownSeed(Dimension.NETHER) == null,
             "Old profiles generate every dimension from their seed");

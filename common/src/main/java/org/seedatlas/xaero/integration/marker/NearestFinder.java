@@ -1,6 +1,7 @@
 package org.seedatlas.xaero.integration.marker;
 
 import java.util.List;
+import java.util.Set;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import org.seedatlas.xaero.config.MarkerType;
@@ -50,7 +51,7 @@ public final class NearestFinder {
     }
 
     /** One generation pass serves every wanted biome, instead of one scan per biome. */
-    public static Result biome(java.util.Set<Integer> biomeIds, ResourceKey<Level> level, int px, int pz) {
+    public static Result biome(Set<Integer> biomeIds, ResourceKey<Level> level, int px, int pz) {
         Dimension dimension = SeedAtlasXaeroIntegration.nativeDimension(level);
         if (dimension == null) return null;
         int y = SeedAtlasXaeroIntegration.yFor(level);

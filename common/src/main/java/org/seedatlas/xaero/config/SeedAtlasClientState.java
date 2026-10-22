@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -16,11 +17,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.server.IntegratedServer;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.storage.LevelResource;
+import org.seedatlas.xaero.SeedAtlasXaero;
 import org.seedatlas.xaero.gui.SeedAtlasSettingsScreen;
+import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.Dimension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +47,6 @@ public final class SeedAtlasClientState {
 	private static volatile SeedAtlasConfig.SeedProfile activeProfile;
 	private static volatile String autoDetectSuppressedContext;
 	private static volatile ContextProvider contextProvider;
-	private static volatile WorldContext externalContext;
 
 	private SeedAtlasClientState() {
 	}
@@ -86,21 +86,11 @@ public final class SeedAtlasClientState {
 		return config;
 	}
 
-	public static Path configPath() {
-		return CONFIG_PATH;
-	}
-
 	/** The base seed: the Overworld's, and every dimension's that has no seed of its own. */
 	public static OptionalLong activeSeed() {
 		initialize();
 		SeedAtlasConfig.SeedProfile profile = activeProfile;
 		return profile == null ? OptionalLong.empty() : seedOf(profile.base());
-	}
-
-	public static Optional<String> activeSeedInput() {
-		initialize();
-		SeedAtlasConfig.SeedProfile profile = activeProfile;
-		return profile == null || profile.base() == null ? Optional.empty() : Optional.of(profile.base().input());
 	}
 
 	/** The seed that generates {@code dimension} in the active context. */
@@ -185,20 +175,6 @@ public final class SeedAtlasClientState {
 		if (contextChanged || profileChanged) {
 			publish(ChangeReason.CONTEXT);
 		}
-	}
-
-	/**
-	 * Overrides fallback server/world identification. Xaero integration can set a
-	 * map-specific context directly and clear it when its session closes.
-	 */
-	public static void setExternalContext(final WorldContext context) {
-		externalContext = context;
-		refreshContext(Minecraft.getInstance());
-	}
-
-	public static void clearExternalContext() {
-		externalContext = null;
-		refreshContext(Minecraft.getInstance());
 	}
 
 	public static void setContextProvider(final ContextProvider provider) {
@@ -435,16 +411,6 @@ public final class SeedAtlasClientState {
 		}
 	}
 
-	public static void setYFor(final ResourceKey<Level> dimension, final int y) {
-		if (Level.NETHER.equals(dimension)) {
-			setNetherY(y);
-		} else if (Level.END.equals(dimension)) {
-			setEndY(y);
-		} else {
-			setOverworldY(y);
-		}
-	}
-
 	public static void setMarkerEnabled(final String markerId, final boolean enabled) {
 		if (config().setMarkerEnabled(markerId, enabled)) {
 			saveAndPublish(ChangeReason.MARKERS);
@@ -453,16 +419,16 @@ public final class SeedAtlasClientState {
 
 	public static void openSettings(final Screen parent) {
 		initialize();
-		if (!org.seedatlas.xaero.SeedAtlasXaero.xaeroCompatible()) {
+		if (!SeedAtlasXaero.xaeroCompatible()) {
 			// The settings drive the Xaero integration, which stays off for this Xaero version.
 			if (Minecraft.getInstance().player != null) {
-				Minecraft.getInstance().player.sendSystemMessage(org.seedatlas.xaero.SeedAtlasXaero.incompatibleMessage());
+				Minecraft.getInstance().player.sendSystemMessage(SeedAtlasXaero.incompatibleMessage());
 			}
 			return;
 		}
 		// Pause native/GPU work immediately so opening settings never keeps the
 		// map pipeline spinning underneath the menu.
-		org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
+		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		Minecraft.getInstance().gui.setScreen(new SeedAtlasSettingsScreen(parent));
 	}
 
@@ -517,11 +483,6 @@ public final class SeedAtlasClientState {
 	}
 
 	private static WorldContext resolveContext(final Minecraft minecraft) {
-		WorldContext override = externalContext;
-		if (override != null) {
-			return override;
-		}
-
 		ContextProvider provider = contextProvider;
 		if (provider != null) {
 			try {
@@ -543,7 +504,7 @@ public final class SeedAtlasClientState {
 
 		ServerData server = minecraft.getCurrentServer();
 		if (server != null && server.ip != null && !server.ip.isBlank()) {
-			String address = server.ip.trim().toLowerCase(java.util.Locale.ROOT);
+			String address = server.ip.trim().toLowerCase(Locale.ROOT);
 			String label = server.name == null || server.name.isBlank() ? server.ip : server.name + " (" + server.ip + ")";
 			return new WorldContext("server:" + digest(address), label);
 		}

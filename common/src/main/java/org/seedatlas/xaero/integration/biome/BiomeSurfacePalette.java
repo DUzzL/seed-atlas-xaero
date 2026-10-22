@@ -13,14 +13,12 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 
 /**
- * Surface colours as Xaero's explored map shows them: the vanilla grass/foliage tint of each biome
- * times the average brightness of the top texture, so savanna, jungle, taiga and swamp keep their own
- * greens. Forest biomes get deterministic tree crowns in their leaf colour (dots up close, a coverage
- * blend at coarse zoom). Crowns are decoration placed from block coordinates, not predicted trees.
+ * Surface colours as Xaero's explored map shows them: each biome's vanilla grass, foliage or water
+ * tint times the average brightness of the block texture. Forest biomes get decorative tree crowns
+ * in their leaf colour, placed from block coordinates.
  */
 final class BiomeSurfacePalette {
-    /** Average brightness of the vanilla top textures (grass_block_top, water_still), lifted by the
-     *  -8% base shade BiomeTerrainStyler applies to every surface sample. */
+    /** Texture brightness of grass_block_top and water_still, offsetting BiomeTerrainStyler's -8% base shade. */
     private static final float GRASS_TEXTURE = 0.62F;
     private static final float WATER_TEXTURE = 0.70F;
     private static final int SNOW = 0xE8EFF0;
@@ -85,7 +83,7 @@ final class BiomeSurfacePalette {
     static int ground(Holder<Biome> biome, int x, int y, int z, boolean fluid, int seaLevel) {
         Biome value = biome.value();
         if (fluid) return water(value.getWaterColor());
-        // shortcut: infer top material without chunk-dependent material rules; upgrade only with a chunk-free rule API.
+        // Vanilla surface rules need a chunk, so the top material is inferred from the biome.
         if (value.coldEnoughToSnow(new BlockPos(x, y, z), seaLevel)) return SNOW;
         if (biome.is(Biomes.DESERT) || biome.is(Biomes.BEACH)) return SAND;
         if (biome.is(Biomes.STONY_SHORE) || biome.is(Biomes.STONY_PEAKS)) return STONE;
@@ -102,10 +100,6 @@ final class BiomeSurfacePalette {
         if (canopy == null) return -1;
         int tint = canopy.fixedColor >= 0 ? canopy.fixedColor : foliageColor(biome.value());
         return scale(tint, canopy.texture);
-    }
-
-    static float canopyDensity(Holder<Biome> biome) {
-        return biome.unwrapKey().map(CANOPIES::get).map(Canopy::density).orElse(0.0F);
     }
 
     static int grass(int tint) {
@@ -128,7 +122,7 @@ final class BiomeSurfacePalette {
         int threshold = Math.round(Math.min(1.0F, density / 0.6F) * 1000.0F);
         for (int dz = -1; dz <= 1; ++dz) {
             for (int dx = -1; dx <= 1; ++dx) {
-                long hash = hash(cellX + dx, cellZ + dz);
+                long hash = BiomeTerrainStyler.hash(cellX + dx, cellZ + dz, CROWN_SALT);
                 if (hash % 1000 >= threshold) continue;
                 float centreX = (cellX + dx) * CROWN_CELL + 0.5F + (hash >>> 12) % CROWN_CELL;
                 float centreZ = (cellZ + dz) * CROWN_CELL + 0.5F + (hash >>> 20) % CROWN_CELL;
@@ -207,13 +201,5 @@ final class BiomeSurfacePalette {
             result |= Math.clamp(Math.round(a + (b - a) * amount), 0, 255) << shift;
         }
         return result;
-    }
-
-    private static long hash(int x, int z) {
-        long h = CROWN_SALT ^ (x * 0x9E3779B97F4A7C15L) ^ (z * 0xC2B2AE3D27D4EB4FL);
-        h ^= h >>> 32;
-        h *= 0xD6E8FEB86659FD93L;
-        h ^= h >>> 32;
-        return h & Long.MAX_VALUE;
     }
 }

@@ -72,10 +72,6 @@ public final class SeedAtlasXaeroIntegration {
             && SeedAtlasClientState.hasActiveSeed();
     }
 
-    public static boolean isFullMapActive() {
-        return fullMapActive;
-    }
-
     public static boolean isHeavyWorkPaused() {
         return heavyWorkPaused;
     }
@@ -117,10 +113,7 @@ public final class SeedAtlasXaeroIntegration {
             revision -> SeedAtlasBiomeOverlayRenderer.INSTANCE.onStateRevision(revision));
     }
 
-    /**
-     * Records and proactively schedules the current viewport. Unlike the old
-     * highlighter path, this never waits for Xaero to request individual chunks.
-     */
+    /** Records and schedules the current viewport without waiting for Xaero to request chunks. */
     public static void observeMapView(
         ResourceKey<Level> level,
         double cameraX,
@@ -138,10 +131,7 @@ public final class SeedAtlasXaeroIntegration {
             level, cameraX, cameraZ, scale, viewportWidth, viewportHeight);
     }
 
-    /**
-     * Map-open-only maintenance. Never generates tiles while the world map is
-     * closed or Seed Atlas settings are open — that was the coil-whine source.
-     */
+    /** Map-only maintenance: generates nothing while the map is closed or settings cover it. */
     public static void tickBackground(Minecraft minecraft) {
         synchronizeRevision();
         if (!fullMapActive || heavyWorkPaused) {
@@ -267,11 +257,6 @@ public final class SeedAtlasXaeroIntegration {
 
     public static double observedMapScale() {
         return observedMapScale;
-    }
-
-    /** Exposed for diagnostics and the settings status text. */
-    public static int currentBiomeSampleStep() {
-        return SeedAtlasBiomeOverlayRenderer.INSTANCE.currentSampleStep();
     }
 
     /** Called with NATIVE_LOCK held. */

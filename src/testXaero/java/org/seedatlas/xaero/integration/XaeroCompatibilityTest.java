@@ -1,7 +1,11 @@
 package org.seedatlas.xaero.integration;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -54,20 +58,19 @@ public final class XaeroCompatibilityTest {
             node -> node.methods.removeIf(m -> m.name.equals("createTempWaypoint"))));
         check(optional.compatible() && optional.warnings().stream().anyMatch(w -> w.contains("createTempWaypoint")),
             "A missing optional waypoint hook only disables that feature: " + optional);
-        System.out.println("Xaero compatibility checks passed (" + report.checked().size()
-            + " Seed Atlas classes; renamed locals, removed members, new abstract methods and missing classes detected)");
+        System.out.println("Xaero compatibility checks passed (" + report.checked().size() + " classes)");
     }
 
     /** Every compiled Seed Atlas class that references Xaero must be reached by the runtime check. */
     private static void everyXaeroUserIsChecked(XaeroCompatibility.Report report) throws IOException {
         int users = 0;
-        for (String entry : System.getProperty("java.class.path").split(java.io.File.pathSeparator)) {
+        for (String entry : System.getProperty("java.class.path").split(File.pathSeparator)) {
             Path root = Path.of(entry);
             if (!Files.isDirectory(root.resolve("org/seedatlas/xaero"))) continue;
             try (var files = Files.walk(root.resolve("org/seedatlas/xaero"))) {
                 for (Path file : files.filter(f -> f.toString().endsWith(".class")).toList()) {
                     byte[] bytes = Files.readAllBytes(file);
-                    ClassNode node = read(new java.io.ByteArrayInputStream(bytes));
+                    ClassNode node = read(new ByteArrayInputStream(bytes));
                     if (!referencesXaero(node, bytes)) continue;
                     users++;
                     check(report.checked().contains(node.name), "Runtime check misses Xaero user " + node.name
@@ -80,7 +83,7 @@ public final class XaeroCompatibilityTest {
 
     /** The constant pool names every class a class file refers to. */
     private static boolean referencesXaero(ClassNode node, byte[] bytes) {
-        String constants = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+        String constants = new String(bytes, StandardCharsets.ISO_8859_1);
         return (constants.contains("xaero/map/") || constants.contains("xaero/lib/"))
             && !node.name.startsWith("org/seedatlas/xaero/compat/")
             && !node.name.startsWith("org/seedatlas/xaero/integration/XaeroCompatibilityTest");
@@ -131,7 +134,7 @@ public final class XaeroCompatibilityTest {
             try {
                 return read(jar.getInputStream(entry));
             } catch (IOException exception) {
-                throw new java.io.UncheckedIOException(exception);
+                throw new UncheckedIOException(exception);
             }
         };
     }

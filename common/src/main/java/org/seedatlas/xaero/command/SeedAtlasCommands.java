@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import java.util.function.Function;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import java.util.Locale;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.SeedAtlasXaero;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
@@ -93,7 +94,7 @@ public final class SeedAtlasCommands {
 	}
 
 	public static Component dimensionName(final Dimension dimension) {
-		return Component.translatable("dimension.seedatlas_xaero." + dimension.name().toLowerCase(java.util.Locale.ROOT));
+		return Component.translatable("dimension.seedatlas_xaero." + dimension.name().toLowerCase(Locale.ROOT));
 	}
 
 	private static int setSeed(final SeedAtlasCommandSource source, String input) {

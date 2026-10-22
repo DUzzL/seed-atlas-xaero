@@ -2,14 +2,17 @@ package org.seedatlas.xaero.biome;
 
 import java.util.Set;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import org.seedatlas.xaero.integration.StateRevisionTracker;
 import org.seedatlas.xaero.integration.biome.BiomeHighlighter;
 import org.seedatlas.xaero.integration.biome.BiomeTerrainStyler;
+import org.seedatlas.xaero.integration.biome.BiomeViewportTest;
 
 /** Verifies the Seed Atlas style highlight colours without opening a Minecraft client. */
 public final class BiomeHighlightTest {
     public static void main(String[] args) {
-        org.seedatlas.xaero.integration.biome.BiomeViewportTest.run();
+        BiomeViewportTest.run();
         surfaceStyling();
         int[] argb = {0xFF3E6B3E, 0xFF2C4C6B, 0xFF808080};
         short[] ids = {1, 4, 1};
@@ -39,15 +42,15 @@ public final class BiomeHighlightTest {
         tracker.synchronize(1, false, applied::add);
         tracker.synchronize(2, true, applied::add);
         tracker.synchronize(3, true, applied::add);
-        check(applied.equals(java.util.List.of(1L)), "Menus must not start tile work");
+        check(applied.equals(List.of(1L)), "Menus must not start tile work");
         tracker.synchronize(3, false, applied::add);
         tracker.synchronize(3, false, applied::add);
-        check(applied.equals(java.util.List.of(1L, 3L)), "Resume must apply the newest pending selection exactly once");
+        check(applied.equals(List.of(1L, 3L)), "Resume must apply the newest pending selection exactly once");
         try {
             tracker.synchronize(4, false, revision -> { throw new IllegalStateException("retry"); });
         } catch (IllegalStateException expected) { }
         tracker.synchronize(4, false, applied::add);
-        check(applied.equals(java.util.List.of(1L, 3L, 4L)), "Failed updates must not be acknowledged");
+        check(applied.equals(List.of(1L, 3L, 4L)), "Failed updates must not be acknowledged");
 
         int[] saturated = {0xFFFFFFF0, 0x406AB135};
         BiomeHighlighter.apply(saturated, new short[]{4, (short) 65535}, BiomeHighlighter.mask(true, Set.of(4)));
@@ -57,20 +60,20 @@ public final class BiomeHighlightTest {
         // Terrain styler: deterministic, seam-free across tiles (negative coords), alpha/unknown preserved.
         int n = 24;
         short[] fid = new short[n * n];
-        java.util.Arrays.fill(fid, (short) 4);
+        Arrays.fill(fid, (short) 4);
         int[] a = new int[n * n];
-        java.util.Arrays.fill(a, 0xC03E6B3E);
+        Arrays.fill(a, 0xC03E6B3E);
         int[] b = a.clone();
         BiomeTerrainStyler.apply(a, fid, -20, -36, 2, n, 99L);
         BiomeTerrainStyler.apply(b, fid, -20, -36, 2, n, 99L);
-        check(java.util.Arrays.equals(a, b), "Terrain styling is deterministic");
+        check(Arrays.equals(a, b), "Terrain styling is deterministic");
         int[] left = new int[n * n];
-        java.util.Arrays.fill(left, 0xC03E6B3E);
+        Arrays.fill(left, 0xC03E6B3E);
         BiomeTerrainStyler.apply(left, fid, -20 - n * 2, -36, 2, n, 99L);
         int[] whole = new int[n * 2 * n * 2];
         short[] wid = new short[n * 2 * n * 2];
-        java.util.Arrays.fill(wid, (short) 4);
-        java.util.Arrays.fill(whole, 0xC03E6B3E);
+        Arrays.fill(wid, (short) 4);
+        Arrays.fill(whole, 0xC03E6B3E);
         BiomeTerrainStyler.apply(whole, wid, -20 - n * 2, -36, 2, n * 2, 99L);
         boolean seam = true;
         for (int z = 6; z < n - 6; ++z) for (int x = 6; x < n - 6; ++x) seam &= left[z * n + x] == whole[z * n * 2 + x];
@@ -86,12 +89,12 @@ public final class BiomeHighlightTest {
         float[] ramp = new float[hw * hw];
         for (int z = 0; z < hw; ++z) for (int x = 0; x < hw; ++x) ramp[z * hw + x] = 63 + (x + z) * 6;
         short[] hid = new short[hn * hn];
-        java.util.Arrays.fill(hid, (short) 4);
+        Arrays.fill(hid, (short) 4);
         int[] lit = new int[hn * hn];
-        java.util.Arrays.fill(lit, 0xC03E6B3E);
+        Arrays.fill(lit, 0xC03E6B3E);
         BiomeTerrainStyler.apply(lit, hid, 0, 0, 4, hn, 5L, ramp);
         int[] shaded = new int[hn * hn];
-        java.util.Arrays.fill(shaded, 0xC03E6B3E);
+        Arrays.fill(shaded, 0xC03E6B3E);
         float[] rampAway = new float[hw * hw];
         for (int i = 0; i < ramp.length; ++i) rampAway[i] = 2 * 63 - ramp[i];
         BiomeTerrainStyler.apply(shaded, hid, 0, 0, 4, hn, 5L, rampAway);
@@ -100,29 +103,29 @@ public final class BiomeHighlightTest {
         check(litSum > shadedSum, "Slopes facing the north-west light are brighter than slopes facing away");
         check((lit[0] >>> 24) == 0xC0, "Height shading preserves alpha");
         int[] fallbackA = new int[hn * hn], fallbackB = new int[hn * hn];
-        java.util.Arrays.fill(fallbackA, 0xC03E6B3E);
-        java.util.Arrays.fill(fallbackB, 0xC03E6B3E);
+        Arrays.fill(fallbackA, 0xC03E6B3E);
+        Arrays.fill(fallbackB, 0xC03E6B3E);
         BiomeTerrainStyler.apply(fallbackA, hid, 0, 0, 4, hn, 5L);
         BiomeTerrainStyler.apply(fallbackB, hid, 0, 0, 4, hn, 5L, new float[3]);
-        check(java.util.Arrays.equals(fallbackA, fallbackB), "A wrong-sized height grid falls back to the noise relief");
+        check(Arrays.equals(fallbackA, fallbackB), "A wrong-sized height grid falls back to the noise relief");
         System.out.println("Biome highlight colour and deferred revision tests passed");
         // End: island slopes are shaded, void (height 0) and unknown samples keep their colour, bad grids are ignored.
         int en = 6, ew = en + 2;
         float[] island = new float[ew * ew];
         for (int z = 0; z < ew; ++z) for (int x = 0; x < ew; ++x) island[z * ew + x] = (x >= 1 && z >= 1 && x <= 6 && z <= 6) ? 40 + (x + z) * 2 : 0;
         short[] eid = new short[en * en];
-        java.util.Arrays.fill(eid, (short) 9);
+        Arrays.fill(eid, (short) 9);
         int[] ecol = new int[en * en];
-        java.util.Arrays.fill(ecol, 0xFFD9D99A);
+        Arrays.fill(ecol, 0xFFD9D99A);
         BiomeTerrainStyler.applyEnd(ecol, eid, 0, 0, 4, en, island);
         check(ecol[2 * en + 2] != 0xFFD9D99A, "End island samples are shaded");
         float[] voidGrid = new float[ew * ew];
         int[] vcol = new int[en * en];
-        java.util.Arrays.fill(vcol, 0xFFD9D99A);
+        Arrays.fill(vcol, 0xFFD9D99A);
         BiomeTerrainStyler.applyEnd(vcol, eid, 0, 0, 4, en, voidGrid);
         check(vcol[0] == 0xFFD9D99A && vcol[en * en - 1] == 0xFFD9D99A, "End void keeps its colour");
         int[] badCol = new int[en * en];
-        java.util.Arrays.fill(badCol, 0xFFD9D99A);
+        Arrays.fill(badCol, 0xFFD9D99A);
         BiomeTerrainStyler.applyEnd(badCol, eid, 0, 0, 4, en, new float[3]);
         BiomeTerrainStyler.applyEnd(badCol, eid, 0, 0, 4, en, null);
         check(badCol[0] == 0xFFD9D99A, "A missing or wrong-sized End grid leaves the tile flat");
@@ -131,12 +134,12 @@ public final class BiomeHighlightTest {
         float[] ng = new float[ew * ew];
         for (int z = 0; z < ew; ++z) for (int x = 0; x < ew; ++x) ng[z * ew + x] = x < 4 ? 20 : 60 + x * 3;
         int[] ncol = new int[en * en];
-        java.util.Arrays.fill(ncol, 0xFF601010);
+        Arrays.fill(ncol, 0xFF601010);
         BiomeTerrainStyler.applyNether(ncol, eid, 0, 0, 4, en, ng);
         check(ncol[0] != 0xFF601010 && (ncol[0] & 0xFF0000) > 0xB00000, "Nether seabed becomes lava");
         check(ncol[5] != 0xFF601010 && (ncol[5] >>> 24) == 0xFF, "Nether ground is shaded and keeps alpha");
         int[] nbad = new int[en * en];
-        java.util.Arrays.fill(nbad, 0xFF601010);
+        Arrays.fill(nbad, 0xFF601010);
         BiomeTerrainStyler.applyNether(nbad, eid, 0, 0, 4, en, null);
         check(nbad[0] == 0xFF601010, "A missing Nether grid leaves the tile untouched");
     }
@@ -144,13 +147,13 @@ public final class BiomeHighlightTest {
     private static void surfaceStyling() {
         int size = 4, width = size + 2;
         float[] ground = new float[width * width];
-        java.util.Arrays.fill(ground, 64);
+        Arrays.fill(ground, 64);
         int[] colors = new int[ground.length];
-        java.util.Arrays.fill(colors, 0x6A7039);
+        Arrays.fill(colors, 0x6A7039);
         int[] pixels = new int[size * size];
-        java.util.Arrays.fill(pixels, 0xA000FFFF);
+        Arrays.fill(pixels, 0xA000FFFF);
         short[] ids = new short[pixels.length];
-        java.util.Arrays.fill(ids, (short) 6);
+        Arrays.fill(ids, (short) 6);
         BiomeTerrainStyler.applySurface(pixels, ids, 1, size, ground, ground, colors);
         for (int pixel : pixels) {
             check(pixel == pixels[0], "Flat swamp surfaces have no fake canopy or per-pixel grain");
@@ -160,10 +163,10 @@ public final class BiomeHighlightTest {
         check(colors[width + 1] == 0x6A7039 && ground[width + 1] == 64,
             "Surface styling does not mutate cached height or colour grids");
         int[] waterColors = colors.clone();
-        java.util.Arrays.fill(waterColors, 0x3F76E4);
+        Arrays.fill(waterColors, 0x3F76E4);
         float[] shallow = ground.clone(), deep = ground.clone();
-        java.util.Arrays.fill(shallow, 62);
-        java.util.Arrays.fill(deep, 30);
+        Arrays.fill(shallow, 62);
+        Arrays.fill(deep, 30);
         int[] shallowPixels = pixels.clone(), deepPixels = pixels.clone();
         BiomeTerrainStyler.applySurface(shallowPixels, ids, 1, size, ground, shallow, waterColors);
         BiomeTerrainStyler.applySurface(deepPixels, ids, 1, size, ground, deep, waterColors);
@@ -174,23 +177,23 @@ public final class BiomeHighlightTest {
         check(preserved[0] == pixels[0], "Unknown biome samples stay unchanged");
         int[] bad = pixels.clone();
         BiomeTerrainStyler.applySurface(bad, ids, 1, size, ground, ground, new int[3]);
-        check(java.util.Arrays.equals(bad, pixels), "Incomplete surface grids do not partially recolour tiles");
+        check(Arrays.equals(bad, pixels), "Incomplete surface grids do not partially recolour tiles");
         float[] invalid = ground.clone();
         invalid[width + 2] = Float.NaN;
         BiomeTerrainStyler.applySurface(bad, ids, 1, size, invalid, ground, waterColors);
         check(bad[1] == pixels[1], "Invalid surface heights do not corrupt pixels");
 
-          float[] ramp = ground.clone(), reverse = ground.clone();
-          for (int z = 0; z < width; ++z) for (int x = 0; x < width; ++x) {
-              ramp[z * width + x] = 70 + x + z;
-              reverse[z * width + x] = 70 - x - z;
-          }
-          int[] lit = pixels.clone(), shade = pixels.clone();
-          java.util.Arrays.fill(ids, (short) 4);
-          BiomeTerrainStyler.applySurface(lit, ids, 1, size, ramp, ramp, colors);
-          BiomeTerrainStyler.applySurface(shade, ids, 1, size, reverse, reverse, colors);
-          check((lit[0] & 255) > (shade[0] & 255), "Real surface slopes face the north-west light");
-          check(lit[0] == lit[lit.length - 1], "Halo gives tile-edge slopes the same shading as interiors");
+        float[] ramp = ground.clone(), reverse = ground.clone();
+        for (int z = 0; z < width; ++z) for (int x = 0; x < width; ++x) {
+            ramp[z * width + x] = 70 + x + z;
+            reverse[z * width + x] = 70 - x - z;
+        }
+        int[] lit = pixels.clone(), shade = pixels.clone();
+        Arrays.fill(ids, (short) 4);
+        BiomeTerrainStyler.applySurface(lit, ids, 1, size, ramp, ramp, colors);
+        BiomeTerrainStyler.applySurface(shade, ids, 1, size, reverse, reverse, colors);
+        check((lit[0] & 255) > (shade[0] & 255), "Real surface slopes face the north-west light");
+        check(lit[0] == lit[lit.length - 1], "Halo gives tile-edge slopes the same shading as interiors");
     }
 
     private static void check(boolean condition, String message) {
