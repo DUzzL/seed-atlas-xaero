@@ -17,23 +17,26 @@ Singleplayer seeds are detected automatically. On multiplayer, set a known seed 
 - `/seedatlas settings` opens the settings.
 - `/seedatlas status` shows the active seed and generation settings.
 - `/seedatlas dimension-seed <nether|end> <seed>` sets a separate seed for the Nether or End, for servers that generate them from another seed; `/seedatlas clear <nether|end>` returns that dimension to the main seed.
+- `/seedatlas version <version|auto>` sets the Minecraft version the world or server generates with, e.g. `26.2` when you join a 26.2 server with a 26.3 client; `auto` follows the running game.
 - `/seedatlas clear` removes the saved seeds.
 
-Use **SA** on the world map to toggle the layer and **…** to open settings. Settings include structure filters, biome highlighting, opacity and performance controls. Structure context menus let you mark locations as completed and create waypoints when Xaero's Minimap is installed.
+Use **SA** on the world map to toggle the layer and the slider button below it to open settings. Settings include structure filters, biome highlighting, opacity and performance controls. Structure context menus let you mark locations as completed and create waypoints when Xaero's Minimap is installed; **Completed** in the structure settings fades completed markers from 100 % (default) down to 0 % (hidden).
+
+**World** in the settings chooses the world type and the Minecraft version, per world or server. Versions 1.18 to 26.3 are available, named like in the Seed Atlas app (1.20 means the latest 1.20.x). Biomes and structures follow the chosen version; the terrain look always uses the running game's terrain.
 
 **Overlay explored** (off by default) also draws the seed map over explored terrain; **Layer opacity** blends the two. Biome focus is always drawn on top.
 
 ## Accuracy
 
-Predictions cover vanilla Normal and Large Biomes worlds of the Minecraft version a release is built for. Custom world generation and modded dimensions are not supported. Some structures and spawn positions are approximate, so a marker does not guarantee a structure.
+Predictions cover vanilla Normal and Large Biomes worlds of Minecraft 1.18 to the version a release is built for. Custom world generation and modded dimensions are not supported. Some structures and spawn positions are approximate, so a marker does not guarantee a structure.
 
 The terrain look shows predicted ground, not explored blocks:
 
 - **Overworld:** close-up views (up to 4 blocks per sample) use vanilla base terrain and aquifers for ground height and water. Grass, leaves and water use each biome's vanilla tint, as on Xaero's map. Surface rules, caves, trees and structures are not generated; forest tree crowns are decorative. A quick preview appears first and is refined in place, which can take a few seconds the first time.
-- **End:** island outlines, end-stone colours and shading follow the generator density, up to 8 blocks per sample. Distant views use biome colours.
+- **End:** island outlines, end-stone colours and shading follow the generator density, up to 8 blocks per sample. Distant views, and the moment before the heights arrive, outline the islands from the End biomes.
 - **Nether:** cave floors and lava seas come from terrain density and vanilla cave carvers, up to 4 blocks per sample. Xaero's Full cave mode scans from below the roof; other modes use the configured Nether Y.
 
-Distant views use coarser samples without fine shading. With the seed layer enabled and a seed available, the map zooms out to one pixel per 512 blocks. Beyond its tile budget, the biome layer pauses and returns when you zoom back in.
+In every dimension the map first shows the biomes and adds the terrain shortly after for the visible area. Distant views use coarser samples without fine shading. With the seed layer enabled and a seed available, the map zooms out to one pixel per 512 blocks. Beyond its tile budget, the biome layer pauses and returns when you zoom back in.
 
 [Report an issue](https://github.com/DUzzL/seed-atlas-xaero/issues) with your Minecraft version, loader, mod versions and relevant logs.
 

@@ -15,10 +15,13 @@
 
 #define SAX_CONTEXT_MAGIC UINT32_C(0x53415831)
 #define SAX_MAX_SCAN_CELLS INT64_C(4194304)
+/* Oldest selectable version: terrain heights and the Nether floor need 1.18+ noise. */
+#define SAX_MIN_MC MC_1_18
 
 struct sax_context {
     uint32_t magic;
     uint32_t generator_flags;
+    int mc; /* engine MC_* version the context generates */
     uint64_t seed;
     Generator biome_generators[3];
     SurfaceNoise end_height_noise; /* read-only after sax_create */
@@ -78,7 +81,7 @@ static int setup_dimension_generator(const sax_context *context,
 {
     if (!context_valid(context) || !generator || !dimension_valid(dimension))
         return SAX_ERR_ARGUMENT;
-    setupGenerator(generator, MC_26_3, context->generator_flags);
+    setupGenerator(generator, context->mc, context->generator_flags);
     applySeed(generator, dimension, context->seed);
     return SAX_OK;
 }
@@ -103,7 +106,7 @@ static int sample_step_valid(int32_t sample_step)
 
 static uint32_t color_from_table(unsigned char colors[256][3], int id)
 {
-    if (id < 0 || id >= 256 || !biomeExists(MC_26_3, id))
+    if (id < 0 || id >= 256 || !biomeExists(MC_NEWEST, id))
         return 0;
     return UINT32_C(0xff000000) | ((uint32_t) colors[id][0] << 16) |
            ((uint32_t) colors[id][1] << 8) | (uint32_t) colors[id][2];
@@ -166,42 +169,62 @@ SAX_API uint32_t sax_capabilities(void)
            SAX_CAP_SPAWN | SAX_CAP_SLIME | SAX_CAP_ORE_VEINS |
            SAX_CAP_END_SHIPS | SAX_CAP_BIOME_SAMPLING |
            SAX_CAP_BIOME_AREAS | SAX_CAP_HEIGHTS |
-           SAX_CAP_NETHER_FLOOR | SAX_CAP_NETHER_CARVING;
+           SAX_CAP_NETHER_FLOOR | SAX_CAP_NETHER_CARVING |
+           SAX_CAP_MC_VERSIONS;
 }
 
 SAX_API int32_t sax_engine_version(char *out, int32_t capacity)
 {
-    return copy_string("seedatlas-engine MC 26.3 / ABI 6", out, capacity);
+    return copy_string("seedatlas-engine MC 1.18-26.3 / ABI 6", out, capacity);
+}
+
+SAX_API int32_t sax_mc_version_supported(const char *mc_version)
+{
+    int mc = mc_version ? str2mc(mc_version) : MC_UNDEF;
+    return mc >= SAX_MIN_MC && mc <= MC_NEWEST;
 }
 
 SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags)
 {
+    return sax_create_versioned(seed, world_flags, NULL);
+}
+
+SAX_API sax_context *sax_create_versioned(int64_t seed, uint32_t world_flags,
+                                          const char *mc_version)
+{
     sax_context *context;
     unsigned char colors[256][3];
+    int mc = MC_NEWEST;
     int i;
     if (world_flags & ~SAX_WORLD_LARGE_BIOMES)
         return NULL;
+    if (mc_version) {
+        if (!sax_mc_version_supported(mc_version))
+            return NULL;
+        mc = str2mc(mc_version);
+    }
     context = (sax_context *) calloc(1, sizeof(*context));
     if (!context)
         return NULL;
     context->magic = SAX_CONTEXT_MAGIC;
+    context->mc = mc;
     context->seed = (uint64_t) seed;
     context->generator_flags =
         (world_flags & SAX_WORLD_LARGE_BIOMES) ? LARGE_BIOMES : 0;
-    setupGenerator(&context->biome_generators[0], MC_26_3,
+    setupGenerator(&context->biome_generators[0], mc,
                    context->generator_flags);
     applySeed(&context->biome_generators[0], SAX_DIM_OVERWORLD,
               context->seed);
-    setupGenerator(&context->biome_generators[1], MC_26_3,
+    setupGenerator(&context->biome_generators[1], mc,
                    context->generator_flags);
     applySeed(&context->biome_generators[1], SAX_DIM_NETHER,
               context->seed);
-    setupGenerator(&context->biome_generators[2], MC_26_3,
+    setupGenerator(&context->biome_generators[2], mc,
                    context->generator_flags);
     applySeed(&context->biome_generators[2], SAX_DIM_END,
               context->seed);
     initSurfaceNoise(&context->end_height_noise, DIM_END, context->seed);
-    /* 26.3 RandomState: legacy terrain noise uses the world seed directly. */
+    /* 1.18+ RandomState: legacy terrain noise uses the world seed directly. */
     initSurfaceNoise(&context->nether_noise, DIM_END, context->seed);
     /* noise_settings/nether: xz 1 / y 3 per cell, factors 80 and 60. */
     context->nether_noise.xzScale = 1.0;
@@ -512,6 +535,192 @@ static float height_at_quart(const BiomeNoise *bn, int32_t qx, int32_t qz)
     return (float) (np[NP_DEPTH] / 76.0);
 }
 
+/* Island centres of the End height noise for a whole area. The engine's
+   getEndHeightNoise evaluates 25x25 simplex samples for every noise cell, though
+   neighbouring cells share almost all of them; sampling each once per area makes
+   End tiles several times faster with identical results. */
+typedef struct end_island_grid {
+    int64_t x0, z0, width;
+    uint16_t *weights; /* island weight 9..21, 0 where there is no island */
+} end_island_grid;
+
+static int end_island_grid_init(end_island_grid *grid, const EndNoise *en,
+                                int cell_x0, int cell_z0, int cell_x1, int cell_z1)
+{
+    int64_t height, i, j;
+    /* getEndHeightNoise halves with C division, which is monotonic in the cell. */
+    grid->x0 = cell_x0 / 2 - 12;
+    grid->z0 = cell_z0 / 2 - 12;
+    grid->width = cell_x1 / 2 + 12 - grid->x0 + 1;
+    height = cell_z1 / 2 + 12 - grid->z0 + 1;
+    grid->weights = (uint16_t *) malloc((size_t) (grid->width * height) * sizeof(*grid->weights));
+    if (!grid->weights)
+        return 0;
+    for (j = 0; j < height; ++j) {
+        for (i = 0; i < grid->width; ++i) {
+            int64_t rx = grid->x0 + i;
+            int64_t rz = grid->z0 + j;
+            uint64_t rsq = rx*rx + rz*rz;
+            uint16_t v = 0;
+            if (rsq > 4096 && sampleSimplex2D(&en->perlin, rx, rz) < -0.9f)
+                v = (unsigned int)(fabsf((float)rx) * 3439.0f + fabsf((float)rz) * 147.0f) % 13 + 9;
+            grid->weights[j * grid->width + i] = v;
+        }
+    }
+    return 1;
+}
+
+/* getEndHeightNoise(en, x, z, 0) with the island centres read from the grid. */
+static float end_height_noise(const end_island_grid *grid, int x, int z)
+{
+    int hx = x / 2;
+    int hz = z / 2;
+    int oddx = x % 2;
+    int oddz = z % 2;
+    int i, j;
+    int64_t h = 64 * (x*(int64_t)x + z*(int64_t)z);
+    for (j = -12; j <= 12; j++) {
+        const uint16_t *row = grid->weights + (hz + j - grid->z0) * grid->width + (hx - grid->x0);
+        for (i = -12; i <= 12; i++) {
+            uint16_t v = row[i];
+            if (v) {
+                int64_t rx = (oddx - i * 2);
+                int64_t rz = (oddz - j * 2);
+                uint64_t rsq = rx*rx + rz*rz;
+                int64_t noise = rsq * v*v;
+                if (noise < h)
+                    h = noise;
+            }
+        }
+    }
+    float ret = 100 - sqrtf((float) h);
+    if (ret < -100) ret = -100;
+    if (ret > 80) ret = 80;
+    return ret;
+}
+
+/* The engine's sampleNoiseColumnEnd on the island grid. */
+static void end_noise_column(double column[], const SurfaceNoise *sn, const EndNoise *en,
+                             const end_island_grid *grid, int x, int z, int colymin, int colymax)
+{
+    static const double upper_drop[] = {
+           1.0,    1.0,    1.0,    1.0,    1.0,    1.0,    1.0,    1.0,
+           1.0,    1.0,    1.0,    1.0,    1.0,    1.0,    1.0, 63./64,
+        62./64, 61./64, 60./64, 59./64, 58./64, 57./64, 56./64, 55./64,
+        54./64, 53./64, 52./64, 51./64, 50./64, 49./64, 48./64, 47./64,
+        46./64
+    };
+    static const double lower_drop[] = {
+          0.0,  0.0, 1./7, 2./7, 3./7, 4./7, 5./7, 6./7,
+          1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,
+          1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,
+          1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,
+          1.0,
+    };
+    int y;
+    if (en->mc > MC_1_13) {
+        uint64_t rsq = (uint64_t) x * x + (uint64_t) z * z;
+        if ((int)rsq < 0) {
+            for (y = colymin; y <= colymax; y++)
+                column[y - colymin] = nan("");
+            return;
+        }
+    }
+    double depth = end_height_noise(grid, x, z) - 8.0f;
+    for (y = colymin; y <= colymax; y++) {
+        if (lower_drop[y] == 0.0) {
+            column[y - colymin] = -30;
+            continue;
+        }
+        double noise = sampleSurfaceNoiseBetween(sn, x, y, z, -128, +128);
+        double clamped = noise + depth;
+        clamped = lerp(upper_drop[y], -3000, clamped);
+        clamped = lerp(lower_drop[y], -30, clamped);
+        column[y - colymin] = clamped;
+    }
+}
+
+/* The engine's getSurfaceHeight (not exported by its headers). */
+static int end_surface_height(
+        const double ncol00[], const double ncol01[],
+        const double ncol10[], const double ncol11[],
+        int colymin, int colymax, int blockspercell, double dx, double dz)
+{
+    int y, celly;
+    for (celly = colymax-1; celly >= colymin; celly--) {
+        int idx = celly - colymin;
+        double v000 = ncol00[idx];
+        double v001 = ncol01[idx];
+        double v100 = ncol10[idx];
+        double v101 = ncol11[idx];
+        double v010 = ncol00[idx+1];
+        double v011 = ncol01[idx+1];
+        double v110 = ncol10[idx+1];
+        double v111 = ncol11[idx+1];
+        for (y = blockspercell - 1; y >= 0; y--) {
+            double dy = y / (double) blockspercell;
+            double noise = lerp3(dy, dx, dz,
+                v000, v010, v100, v110,
+                v001, v011, v101, v111);
+            if (noise > 0)
+                return celly * blockspercell + y;
+        }
+    }
+    return 0;
+}
+
+/* mapEndSurfaceHeight(y, en, sn, x, z, w, h, scale, 0) on a shared island grid. */
+static int32_t end_surface_area(float *out, const EndNoise *en, const SurfaceNoise *sn,
+                                int x, int z, int w, int h, int scale)
+{
+    end_island_grid grid;
+    int y0 = 2, y1 = 18;
+    int yn = y1 - y0 + 1;
+    double cellmid = scale > 1 ? scale / 16.0 : 0;
+    int cellsiz = 8 / scale;
+    int cx = floor_div(x, cellsiz);
+    int cz = floor_div(z, cellsiz);
+    int cw = floor_div(x + w - 1, cellsiz) - cx + 2;
+    int i, j;
+    double *buf, *ncol[2];
+
+    if (!end_island_grid_init(&grid, en, cx, cz, cx + cw - 1, floor_div(z + h - 1, cellsiz) + 1))
+        return SAX_ERR_ALLOCATION;
+    buf = (double *) malloc(sizeof(double) * yn * cw * 2);
+    if (!buf) {
+        free(grid.weights);
+        return SAX_ERR_ALLOCATION;
+    }
+    ncol[0] = buf;
+    ncol[1] = buf + yn * cw;
+    for (i = 0; i < cw; i++)
+        end_noise_column(ncol[1]+i*yn, sn, en, &grid, cx+i, cz+0, y0, y1);
+    for (j = 0; j < h; j++) {
+        int cj = floor_div(z + j, cellsiz);
+        int dj = z + j - cj * cellsiz;
+        if (j == 0 || dj == 0) {
+            double *tmp = ncol[0];
+            ncol[0] = ncol[1];
+            ncol[1] = tmp;
+            for (i = 0; i < cw; i++)
+                end_noise_column(ncol[1]+i*yn, sn, en, &grid, cx+i, cj+1, y0, y1);
+        }
+        for (i = 0; i < w; i++) {
+            int ci = floor_div(x + i, cellsiz);
+            int di = x + i - ci * cellsiz;
+            double dx = di / (double) cellsiz + cellmid;
+            double dz = dj / (double) cellsiz + cellmid;
+            double *ncol0 = ncol[0] + (ci - cx) * yn;
+            double *ncol1 = ncol[1] + (ci - cx) * yn;
+            out[j*w+i] = end_surface_height(ncol0, ncol1, ncol0+yn, ncol1+yn,
+                y0, y1, 4, dx, dz);
+        }
+    }
+    free(buf);
+    free(grid.weights);
+    return SAX_OK;
+}
+
 SAX_API int32_t sax_height_area_sampled(
     const sax_context *context, int32_t dimension,
     int32_t origin_block_x, int32_t origin_block_z,
@@ -545,12 +754,10 @@ SAX_API int32_t sax_height_area_sampled(
         if (origin_block_x % sample_step != 0 ||
             origin_block_z % sample_step != 0)
             return SAX_ERR_ARGUMENT;
-        if (mapEndSurfaceHeight(out_heights,
-                &context->biome_generators[2].en, &context->end_height_noise,
-                origin_block_x / sample_step, origin_block_z / sample_step,
-                sample_width, sample_height, sample_step, 0) != 0)
-            return SAX_ERR_GENERATION;
-        return SAX_OK;
+        return end_surface_area(out_heights,
+            &context->biome_generators[2].en, &context->end_height_noise,
+            origin_block_x / sample_step, origin_block_z / sample_step,
+            sample_width, sample_height, sample_step);
     }
     bn = &context->biome_generators[0].bn;
 
@@ -619,33 +826,114 @@ static double nether_density(double base, int y)
     return 0.64 * (2.5 + ymul * (-2.5 + 0.9375 + yhigh * (base - 0.9375)));
 }
 
-/* Densities at y = 0, 8, .. 8*cells for the noise column at cell (cx, cz). */
-static void nether_column(const SurfaceNoise *sn, int32_t cx, int32_t cz,
-                          int cells, double *out)
+/* old_blended_noise the way vanilla's BlendedNoise evaluates it: the main noise
+   picks the blend first, so a limit noise that a saturated blend ignores is never
+   sampled. Same sums in the same order as the engine's sampleSurfaceNoise, so the
+   result is bit-identical while skipping up to 16 of 40 octaves. */
+static double nether_noise(const SurfaceNoise *sn, int x, int y, int z)
 {
-    int j;
-    for (j = 0; j <= cells; ++j)
-        out[j] = nether_density(sampleSurfaceNoise(sn, cx, j, cz) / 128.0, j * 8);
+    double xzScale = 684.412 * sn->xzScale;
+    double yScale = 684.412 * sn->yScale;
+    double xzStep = xzScale / sn->xzFactor;
+    double yStep = yScale / sn->yFactor;
+    double minNoise = 0, maxNoise = 0, mainNoise = 0, blend;
+    double persist = 1.0, contrib = 1.0;
+    int i;
+    for (i = 0; i < 8; i++) {
+        double sy = yStep * persist;
+        mainNoise += samplePerlin(&sn->octmain.octaves[i], x * xzStep * persist,
+            y * yStep * persist, z * xzStep * persist, sy, y * sy) * contrib;
+        persist *= 0.5;
+        contrib *= 2.0;
+    }
+    blend = 0.5 + 0.05 * mainNoise;
+    persist = 1.0;
+    contrib = 1.0;
+    for (i = 0; i < 16; i++) {
+        double dx = x * xzScale * persist, dy = y * yScale * persist, dz = z * xzScale * persist;
+        double sy = yScale * persist;
+        if (blend < 1)
+            minNoise += samplePerlin(&sn->octmin.octaves[i], dx, dy, dz, sy, y * sy) * contrib;
+        if (blend > 0)
+            maxNoise += samplePerlin(&sn->octmax.octaves[i], dx, dy, dz, sy, y * sy) * contrib;
+        persist *= 0.5;
+        contrib *= 2.0;
+    }
+    return clampedLerp(blend, minNoise / 512.0, maxNoise / 512.0);
 }
 
-static int nether_solid(const double *v, int y)
+/* Noise-cell corner densities, sampled on first use: a floor scan only needs the
+   cells from its start Y down to the floor, usually about half of the column. */
+typedef struct nether_lattice {
+    const SurfaceNoise *noise;
+    double *values; /* NaN until sampled; stride doubles per corner column */
+    int32_t cx0, cz0;
+    int64_t width, stride;
+} nether_lattice;
+
+static double nether_corner(const nether_lattice *lattice, int64_t i, int64_t j, int k)
+{
+    double *value = lattice->values + (j * lattice->width + i) * lattice->stride + k;
+    if (isnan(*value))
+        *value = nether_density(nether_noise(lattice->noise, (int) (lattice->cx0 + i), k,
+            (int) (lattice->cz0 + j)) / 128.0, k * 8);
+    return *value;
+}
+
+/* One sample's density column: its own noise cell, or a bilinear blend of four
+   lattice corners. Values are filled in as the scan reaches them. */
+typedef struct nether_column {
+    const nether_lattice *lattice;
+    const SurfaceNoise *noise;
+    int64_t i, j; /* lattice corner of an interpolated column */
+    int32_t cx, cz; /* noise cell of a direct column */
+    double tx, tz;
+    int direct;
+    double values[17];
+} nether_column;
+
+static double nether_column_at(nether_column *column, int k)
+{
+    double *value = &column->values[k];
+    if (isnan(*value)) {
+        if (column->direct) {
+            *value = nether_density(nether_noise(column->noise, column->cx, k, column->cz) / 128.0, k * 8);
+        } else {
+            const nether_lattice *l = column->lattice;
+            double a = nether_corner(l, column->i, column->j, k);
+            double b = nether_corner(l, column->i + 1, column->j, k);
+            double c = nether_corner(l, column->i, column->j + 1, k);
+            double d = nether_corner(l, column->i + 1, column->j + 1, k);
+            double top = a + (b - a) * column->tx;
+            double bottom = c + (d - c) * column->tx;
+            *value = top + (bottom - top) * column->tz;
+        }
+    }
+    return *value;
+}
+
+static int nether_solid(nether_column *column, int y)
 {
     int j = y >> 3;
-    return v[j] + (v[j + 1] - v[j]) * ((y & 7) / 8.0) > 0.0;
+    double low = nether_column_at(column, j);
+    return low + (nether_column_at(column, j + 1) - low) * ((y & 7) / 8.0) > 0.0;
 }
 
-static int nether_occupied(const double *v, int y, const uint64_t *carved)
+static int nether_occupied(nether_column *column, int y, const uint64_t *carved)
 {
-    return nether_solid(v, y) && (!carved || !(carved[y >> 6] & (UINT64_C(1) << (y & 63))));
+    return nether_solid(column, y) && (!carved || !(carved[y >> 6] & (UINT64_C(1) << (y & 63))));
 }
 
 /* Leave the roof, then select the first solid floor, including carver-created pockets. */
-static float nether_scan(const double *v, int ystart, const uint64_t *carved)
+static float nether_scan(nether_column *column, int ystart, const uint64_t *carved)
 {
     int y = ystart;
-    while (y > 0 && nether_occupied(v, y, carved))
+    int k;
+    for (k = 0; k < 17; ++k)
+        column->values[k] = NAN;
+    while (y > 0 && nether_occupied(column, y, carved))
         --y;
-    while (y > 0 && !nether_occupied(v, y, carved))
+    while (y > 0 && !nether_occupied(column, y, carved))
         --y;
     return (float) y;
 }
@@ -658,7 +946,8 @@ static int32_t nether_floor_area(
     int64_t sample_count, last_x, last_z;
     int32_t x, z;
     int ystart, cells;
-    double off, col[17];
+    double off;
+    nether_column column;
 
     if (!out_heights || !sample_step_valid(sample_step) ||
         sample_width <= 0 || sample_height <= 0 || output_capacity < 0 ||
@@ -681,59 +970,56 @@ static int32_t nether_floor_area(
     ystart = y < 1 ? 1 : (y > 127 ? 127 : y);
     cells = (ystart >> 3) + 1;
     off = (sample_step - 1) / 2.0; /* block offset of the sample centre */
+    memset(&column, 0, sizeof(column));
+    column.noise = &context->nether_noise;
 
     if (sample_step >= 8) {
         /* One column per sample at the nearest noise cell, no interpolation. */
+        column.direct = 1;
         for (z = 0; z < sample_height; ++z) {
             int64_t bz = (int64_t) origin_block_z + (int64_t) z * sample_step + sample_step / 2;
             for (x = 0; x < sample_width; ++x) {
                 int64_t bx = (int64_t) origin_block_x + (int64_t) x * sample_step + sample_step / 2;
-                nether_column(&context->nether_noise,
-                    (int32_t) floor_div64(bx + 2, 4), (int32_t) floor_div64(bz + 2, 4),
-                    cells, col);
                 int64_t index = (int64_t) z * sample_width + x;
-                out_heights[index] = nether_scan(col, ystart, carved ? carved + index * 2 : NULL);
+                column.cx = (int32_t) floor_div64(bx + 2, 4);
+                column.cz = (int32_t) floor_div64(bz + 2, 4);
+                out_heights[index] = nether_scan(&column, ystart, carved ? carved + index * 2 : NULL);
             }
         }
         return SAX_OK;
     }
     else {
-        int32_t cx0 = (int32_t) floor_div64(origin_block_x, 4);
-        int32_t cz0 = (int32_t) floor_div64(origin_block_z, 4);
-        int32_t cx1 = (int32_t) floor_div64(origin_block_x + (int64_t) (sample_width - 1) * sample_step + (int64_t) ceil(off), 4) + 1;
-        int32_t cz1 = (int32_t) floor_div64(origin_block_z + (int64_t) (sample_height - 1) * sample_step + (int64_t) ceil(off), 4) + 1;
-        int64_t lw = (int64_t) cx1 - cx0 + 1, lh = (int64_t) cz1 - cz0 + 1;
-        int64_t stride = cells + 1, i, j;
-        double *lattice = (double *) malloc((size_t) (lw * lh * stride) * sizeof(*lattice));
-        if (!lattice)
+        nether_lattice lattice;
+        int32_t cx1, cz1;
+        int64_t lh, i, count;
+        lattice.noise = &context->nether_noise;
+        lattice.cx0 = (int32_t) floor_div64(origin_block_x, 4);
+        lattice.cz0 = (int32_t) floor_div64(origin_block_z, 4);
+        cx1 = (int32_t) floor_div64(origin_block_x + (int64_t) (sample_width - 1) * sample_step + (int64_t) ceil(off), 4) + 1;
+        cz1 = (int32_t) floor_div64(origin_block_z + (int64_t) (sample_height - 1) * sample_step + (int64_t) ceil(off), 4) + 1;
+        lattice.width = (int64_t) cx1 - lattice.cx0 + 1;
+        lh = (int64_t) cz1 - lattice.cz0 + 1;
+        lattice.stride = cells + 1;
+        count = lattice.width * lh * lattice.stride;
+        lattice.values = (double *) malloc((size_t) count * sizeof(*lattice.values));
+        if (!lattice.values)
             return SAX_ERR_ALLOCATION;
-        for (j = 0; j < lh; ++j)
-            for (i = 0; i < lw; ++i)
-                nether_column(&context->nether_noise, (int32_t) (cx0 + i),
-                    (int32_t) (cz0 + j), cells, lattice + (j * lw + i) * stride);
+        for (i = 0; i < count; ++i)
+            lattice.values[i] = NAN;
+        column.lattice = &lattice;
         for (z = 0; z < sample_height; ++z) {
             double bz = (double) origin_block_z + (double) z * sample_step + off;
-            int64_t cz = (int64_t) floor(bz / 4.0) - cz0;
-            double tz = bz / 4.0 - floor(bz / 4.0);
+            column.j = (int64_t) floor(bz / 4.0) - lattice.cz0;
+            column.tz = bz / 4.0 - floor(bz / 4.0);
             for (x = 0; x < sample_width; ++x) {
                 double bx = (double) origin_block_x + (double) x * sample_step + off;
-                int64_t cx = (int64_t) floor(bx / 4.0) - cx0;
-                double tx = bx / 4.0 - floor(bx / 4.0);
-                const double *a = lattice + (cz * lw + cx) * stride;
-                const double *b = a + stride;
-                const double *c = lattice + ((cz + 1) * lw + cx) * stride;
-                const double *d = c + stride;
-                int k;
-                for (k = 0; k < stride; ++k) {
-                    double top = a[k] + (b[k] - a[k]) * tx;
-                    double bottom = c[k] + (d[k] - c[k]) * tx;
-                    col[k] = top + (bottom - top) * tz;
-                }
                 int64_t index = (int64_t) z * sample_width + x;
-                out_heights[index] = nether_scan(col, ystart, carved ? carved + index * 2 : NULL);
+                column.i = (int64_t) floor(bx / 4.0) - lattice.cx0;
+                column.tx = bx / 4.0 - floor(bx / 4.0);
+                out_heights[index] = nether_scan(&column, ystart, carved ? carved + index * 2 : NULL);
             }
         }
-        free(lattice);
+        free(lattice.values);
         return SAX_OK;
     }
 }
@@ -761,7 +1047,7 @@ SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity)
 {
     if (biome_id < 0 || biome_id >= 256)
         return 0;
-    return copy_string(biome2str(MC_26_3, biome_id), out, capacity);
+    return copy_string(biome2str(MC_NEWEST, biome_id), out, capacity);
 }
 
 SAX_API uint32_t sax_biome_color(int32_t biome_id)
@@ -1002,7 +1288,7 @@ static int32_t scan_end_islands(const sax_context *context,
                consumes the following RNG values in the wrong order. The
                dedicated helper reproduces Vanilla's one-or-two island draw,
                in-chunk X/Z, Y, and radius. */
-            island_count = getEndIslands(islands, MC_26_3, context->seed,
+            island_count = getEndIslands(islands, context->mc, context->seed,
                                          chunk_x, chunk_z);
             for (i = 0; i < island_count; ++i) {
                 Pos position = {islands[i].x, islands[i].z};
@@ -1052,9 +1338,15 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
         engine_type = End_City;
         output_type = SAX_END_SHIP;
     }
-    if (engine_type <= Feature || engine_type >= FEATURE_NUM ||
-        !getStructureConfig(engine_type, MC_26_3, &config))
+    if (engine_type <= Feature || engine_type >= FEATURE_NUM)
         return SAX_ERR_UNSUPPORTED;
+    if (!getStructureConfig(engine_type, context->mc, &config)) {
+        /* Known to the newest version but not generated in the selected one,
+           e.g. Trial Chambers before 1.21: nothing to show. */
+        if (getStructureConfig(engine_type, MC_NEWEST, &config))
+            return 0;
+        return SAX_ERR_UNSUPPORTED;
+    }
 
     reg_x0 = floor_div(min_x, (int32_t) config.regionSize * 16);
     reg_z0 = floor_div(min_z, (int32_t) config.regionSize * 16);
@@ -1078,7 +1370,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
     if (structure_type == SAX_END_GATEWAY) {
         Pos fixed[20];
         int i;
-        getFixedEndGateways(MC_26_3, context->seed, fixed);
+        getFixedEndGateways(context->mc, context->seed, fixed);
         for (i = 0; i < 20; ++i) {
             if (!in_box(fixed[i], min_x, min_z, max_x, max_z))
                 continue;
@@ -1094,7 +1386,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
             Pos position;
             int flags = 0;
             int detail = engine_type == Abandoned_Camp ? -1 : 0;
-            if (!getStructurePos(engine_type, MC_26_3, context->seed,
+            if (!getStructurePos(engine_type, context->mc, context->seed,
                                  reg_x, reg_z, &position) ||
                 !in_box(position, min_x, min_z, max_x, max_z))
                 continue;
@@ -1106,7 +1398,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
                 if (engine_type == Abandoned_Camp) {
                     StructureVariant variant;
                     detail = biome & SAX_CAMP_BIOME_MASK;
-                    if (getVariant(&variant, engine_type, MC_26_3, context->seed,
+                    if (getVariant(&variant, engine_type, context->mc, context->seed,
                                    position.x, position.z, biome) && variant.special)
                         detail |= SAX_CAMP_SPECIAL_LOOT;
                 }
@@ -1121,7 +1413,7 @@ SAX_API int32_t sax_scan_structures(const sax_context *context,
             if (output_type == SAX_END_SHIP &&
                 !end_city_has_ship(context->seed, position))
                 continue;
-            /* Cubiomes has no exact 26.3 Overworld WORLD_SURFACE_WG/block
+            /* Cubiomes has no exact Overworld WORLD_SURFACE_WG/block
                sampler. Keep these potential starts visible instead of using
                its heuristic terrain filter (which can hide real structures),
                but expose the uncertainty to the map tooltip. */
@@ -1157,7 +1449,7 @@ SAX_API int32_t sax_scan_strongholds(const sax_context *context,
             return result;
         generator_pointer = &generator;
     }
-    initFirstStronghold(&iterator, MC_26_3, context->seed);
+    initFirstStronghold(&iterator, context->mc, context->seed);
     do {
         int flags;
         remaining = nextStronghold(&iterator, generator_pointer);

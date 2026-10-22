@@ -26,6 +26,7 @@ import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.BlockBox;
 import org.seedatlas.xaero.nativeapi.BlockPos;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.seedatlas.xaero.nativeapi.ScanResult;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.SpawnMode;
@@ -116,6 +117,7 @@ final class SeedAtlasStructureMarkerSource {
         Request next = new Request(
             seed.getAsLong(),
             SeedAtlasClientState.config().largeBiomes(),
+            SeedAtlasClientState.activeGameVersion(),
             dimension,
             level,
             centerX - radius,
@@ -291,7 +293,7 @@ final class SeedAtlasStructureMarkerSource {
             return List.of();
         }
         try {
-            List<SeedAtlasStructureMarker> result = SeedAtlasXaeroIntegration.withSession(request.seed, request.largeBiomes,
+            List<SeedAtlasStructureMarker> result = SeedAtlasXaeroIntegration.withSession(request.seed, request.largeBiomes, request.gameVersion,
                 session -> scanWithSession(session, request.level, request.dimension, box, marker));
             if (!current.getAsBoolean() || result == null) {
                 return List.of();
@@ -439,6 +441,7 @@ final class SeedAtlasStructureMarkerSource {
     private record Request(
         long seed,
         boolean largeBiomes,
+        GameVersion gameVersion,
         Dimension dimension,
         ResourceKey<Level> level,
         int minX,
@@ -453,6 +456,7 @@ final class SeedAtlasStructureMarkerSource {
         private boolean hasSameMarkerIdentity(Request other) {
             return this.seed == other.seed
                 && this.largeBiomes == other.largeBiomes
+                && this.gameVersion.equals(other.gameVersion)
                 && this.dimension == other.dimension
                 && this.level.equals(other.level)
                 && this.configured.equals(other.configured);

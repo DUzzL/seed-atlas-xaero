@@ -57,6 +57,23 @@ public final class EndTerrainStylerTest {
                 }
             }
         }
+        // Without heights the End biomes outline the islands in the refined palette.
+        short[] previewIds = {42, 41, 40, 43, 9, 9};
+        int[] preview = new int[6];
+        java.util.Arrays.fill(preview, 0xFF7F3FB2);
+        BiomeTerrainStyler.applyEndPreview(preview, previewIds, -16, 3000, 8, 1);
+        check(preview[0] != 0xFF7F3FB2 && preview[1] == 0xFF7F3FB2, "A 1x1 tile only touches its own sample");
+        int[] row = new int[6];
+        java.util.Arrays.fill(row, 0xFF7F3FB2);
+        BiomeTerrainStyler.applyEndPreview(row, previewIds, 2000, 2000, 16, 2);
+        check(row[0] != 0xFF7F3FB2 && row[1] != 0xFF7F3FB2, "Highlands and midlands become end stone");
+        check((row[2] & 0xFFFFFF) == 0x1A1A2E && (row[3] & 0xFFFFFF) == 0x1A1A2E, "Small islands and barrens become void");
+        int[] centre = {0xFF7F3FB2, 0xFF7F3FB2, 0xFF7F3FB2, 0xFF7F3FB2};
+        BiomeTerrainStyler.applyEndPreview(centre, new short[]{9, 9, 9, 9}, -64, -64, 64, 2);
+        check((centre[0] & 0xFFFFFF) != 0x1A1A2E, "The main island shows at the centre");
+        int[] outer = {0xFF7F3FB2};
+        BiomeTerrainStyler.applyEndPreview(outer, new short[]{9}, 600, 600, 16, 1);
+        check((outer[0] & 0xFFFFFF) == 0x1A1A2E, "The rest of the central biome is void");
         System.out.println("End terrain contour, palette and tile seam tests passed");
     }
 

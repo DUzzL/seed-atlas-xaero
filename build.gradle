@@ -194,6 +194,16 @@ tasks.register('overworldTerrainSamplerTest', JavaExec) {
 
 tasks.named('check') { dependsOn tasks.named('overworldTerrainSamplerTest') }
 
+// Opt-in: first-pass cost of one map tile per dimension and zoom step (not part of check).
+tasks.register('dimensionTileBenchmark', JavaExec) {
+	dependsOn tasks.named('compileBiomeHighlightTest'), tasks.named('processResources')
+	classpath = files(biomeHighlightTestClasses) + sourceSets.main.output + sourceSets.client.runtimeClasspath
+	mainClass = 'org.seedatlas.xaero.integration.biome.DimensionTileBenchmark'
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
+	workingDir = layout.buildDirectory.dir('dimensionTileBenchmark').get().asFile
+	doFirst { workingDir.mkdirs() }
+}
+
 // Keep the loader-neutral client command tree equivalent across all builds.
 def commandTestClasses = layout.buildDirectory.dir('classes/commandTest')
 tasks.register('compileCommandTest', JavaCompile) {

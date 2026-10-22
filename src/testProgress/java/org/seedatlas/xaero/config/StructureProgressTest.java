@@ -46,10 +46,24 @@ public final class StructureProgressTest {
                 new StructureKey("server-a",123,false,"minecraft:overworld","village",-128,257))) {
                 check(!loaded.isCompleted(other), "Do not share progress across identities: " + other);
             }
-            loaded.setHideCompletedStructures(true);
+            check(loaded.completedOpacity() == 100, "Completed structures start fully visible");
+            check(loaded.setCompletedOpacity(35) && !loaded.hideCompletedStructures(), "Fading is not hiding");
+            SeedAtlasConfigIO.save(file, loaded);
+            loaded = SeedAtlasConfigIO.load(file);
+            check(loaded.completedOpacity() == 35 && loaded.isCompleted(key), "Fade persists independently");
+            check(loaded.setCompletedOpacity(-5) && loaded.completedOpacity() == 0
+                && loaded.hideCompletedStructures(), "0 % hides completed structures");
             SeedAtlasConfigIO.save(file, loaded);
             loaded = SeedAtlasConfigIO.load(file);
             check(loaded.hideCompletedStructures() && loaded.isCompleted(key), "Filter persists independently");
+            // Version 7 only had the hide switch.
+            Path legacyHide = directory.resolve("legacy-hide.json");
+            Files.writeString(legacyHide, """
+                {"version":7,"structures":{"enabled":true,"hideCompleted":true}}
+                """);
+            check(SeedAtlasConfigIO.load(legacyHide).completedOpacity() == 0, "Hidden completed structures stay hidden");
+            Files.delete(legacyHide);
+            gameVersions(file, loaded);
             loaded.setBiomeHighlightEnabled(true);
             loaded.toggleHighlightedBiome(1);
             loaded.toggleHighlightedBiome(27);
@@ -129,6 +143,23 @@ public final class StructureProgressTest {
         }
         config.putSeedProfile("server-a", base);
         config.removeSeedProfile("server-c");
+    }
+
+    /** A server on another Minecraft release keeps its version; unknown names are dropped. */
+    private static void gameVersions(final Path file, final SeedAtlasConfig config) throws Exception {
+        check(config.gameVersion("server-a") == null, "Contexts follow the running game by default");
+        check(config.setGameVersion("server-a", "26.2"), "Choose 26.2 for one server");
+        check(!config.setGameVersion("server-a", "26.2"), "Choosing the same version is idempotent");
+        SeedAtlasConfigIO.save(file, config);
+        var root = Files.readString(file);
+        check(root.contains("\"gameVersions\"") && root.contains("\"26.2\""), "Version is written per context");
+        Files.writeString(file, root.replace("\"26.2\"", "\"not-a-version\""));
+        check(SeedAtlasConfigIO.load(file).gameVersion("server-a") == null, "Unknown versions fall back to automatic");
+        SeedAtlasConfigIO.save(file, config);
+        var loaded = SeedAtlasConfigIO.load(file);
+        check("26.2".equals(loaded.gameVersion("server-a")) && loaded.gameVersion("server-b") == null,
+            "Version survives reload for its own context only");
+        check(loaded.setGameVersion("server-a", null) && loaded.gameVersion("server-a") == null, "Back to automatic");
     }
 
     private static void check(boolean condition, String message) {

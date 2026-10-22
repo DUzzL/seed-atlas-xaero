@@ -33,6 +33,7 @@ import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.BiomeRegion;
 import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.joml.Matrix4f;
 import xaero.lib.client.graphics.XaeroBufferProvider;
 import xaero.lib.client.gui.widget.Tooltip;
@@ -254,6 +255,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         ViewRequest next = new ViewRequest(
             seed.getAsLong(),
             SeedAtlasClientState.config().largeBiomes(),
+            SeedAtlasClientState.activeGameVersion(),
             dimension,
             level,
             sampleY,
@@ -328,6 +330,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 TileKey key = tileKey(
                     seed.getAsLong(),
                     SeedAtlasClientState.config().largeBiomes(),
+                    SeedAtlasClientState.activeGameVersion(),
                     dimension,
                     level,
                     dimension == Dimension.NETHER ? this.netherSurfaceY : SeedAtlasXaeroIntegration.yFor(level),
@@ -659,8 +662,18 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         return cached && !complete && category == 1 && !coveragePending;
     }
 
+    /**
+     * Tiles whose terrain costs far more than their biomes appear flat or previewed first and get
+     * their terrain in a second pass: the Overworld's vanilla surface, the Nether's cave floor and
+     * the End's island heights. Covering the screen first keeps all three dimensions equally quick.
+     */
     static boolean needsSurfaceRefinement(Dimension dimension, boolean styled, boolean focused, int step) {
-        return dimension == Dimension.OVERWORLD && styled && !focused && step <= 4;
+        if (!styled || focused) return false;
+        return switch (dimension) {
+            case OVERWORLD -> step <= 4;
+            case NETHER -> step <= 16;
+            case END -> step <= 8;
+        };
     }
 
     static int tilePriority(int category, boolean refining) {
@@ -959,6 +972,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             SeedAtlasClientState.activeSeed(Dimension.NETHER),
             SeedAtlasClientState.activeSeed(Dimension.END),
             config.largeBiomes(),
+            SeedAtlasClientState.activeGameVersion(),
             config.overworldY(),
             config.netherY(),
             config.endY(),
@@ -1078,6 +1092,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         return tileKey(
             view.seed,
             view.largeBiomes,
+            view.gameVersion,
             view.dimension,
             view.level,
             view.y,
@@ -1091,6 +1106,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     private static TileKey tileKey(
         long seed,
         boolean largeBiomes,
+        GameVersion gameVersion,
         Dimension dimension,
         ResourceKey<Level> level,
         int y,
@@ -1109,6 +1125,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         return new TileKey(
             seed,
             largeBiomes,
+            gameVersion,
             dimension,
             level,
             y,
@@ -1207,7 +1224,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                     if (!isCurrent()) return;
                 }
                 boolean hasSurface = surface != null;
-                BiomeRegion region = SeedAtlasXaeroIntegration.withSession(this.key.seed, this.key.largeBiomes, session -> {
+                BiomeRegion region = SeedAtlasXaeroIntegration.withSession(this.key.seed, this.key.largeBiomes,
+                    this.key.gameVersion, session -> {
                     BiomeRegion biomes = session.biomeArea(
                         this.key.dimension,
                         this.key.originBlockX,
@@ -1218,7 +1236,10 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                         this.key.textureSize
                     );
                     boolean nether = this.key.dimension == Dimension.NETHER;
-                    if (!hasSurface && this.terrainStyle && this.highlightMask.length == 0 && this.key.sampleStep < 64
+                    // Nether floors and End islands take far longer than biomes: the first pass shows
+                    // flat biomes at once and the refinement pass adds the terrain.
+                    boolean deferred = this.key.dimension != Dimension.OVERWORLD && !this.refining;
+                    if (!hasSurface && !deferred && this.terrainStyle && this.highlightMask.length == 0 && this.key.sampleStep < 64
                         && (nether ? session.supportsNetherFloor() && this.key.sampleStep <= 16
                             : (this.key.dimension == Dimension.OVERWORLD
                                 || this.key.dimension == Dimension.END && this.key.sampleStep <= 8)
@@ -1275,10 +1296,18 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                     } else if (this.key.dimension == Dimension.OVERWORLD) {
                         BiomeTerrainStyler.applyPreview(pixels, ids, this.key.sampleStep, this.key.textureSize,
                             heightsOut[0], previewColors(ids, heightsOut[0]));
-                    } else if (this.key.dimension == Dimension.END && this.key.sampleStep < 64) {
-                        // Real island heights; unavailable (coarse zoom, old library) leaves the End flat.
-                        BiomeTerrainStyler.applyEnd(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
-                            this.key.sampleStep, this.key.textureSize, heightsOut[0]);
+                    } else if (this.key.dimension == Dimension.NETHER && heightsOut[0] == null && !this.refining
+                        && needsSurfaceRefinement(this.key.dimension, true, false, this.key.sampleStep)) {
+                        // Flat preview; the refinement pass adds the cave floor shortly after.
+                    } else if (this.key.dimension == Dimension.END) {
+                        // Real island heights; before they arrive and at coarse zoom the End biomes stand in.
+                        if (heightsOut[0] == null) {
+                            BiomeTerrainStyler.applyEndPreview(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
+                                this.key.sampleStep, this.key.textureSize);
+                        } else {
+                            BiomeTerrainStyler.applyEnd(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
+                                this.key.sampleStep, this.key.textureSize, heightsOut[0]);
+                        }
                     } else if (this.key.dimension == Dimension.NETHER && heightsOut[0] != null && this.key.sampleStep < 64) {
                         // Predicted Nether surface for the selected cave view.
                         BiomeTerrainStyler.applyNether(pixels, ids, this.key.originBlockX, this.key.originBlockZ,
@@ -1374,6 +1403,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             return activeSeed.isPresent()
                 && activeSeed.getAsLong() == this.key.seed
                 && SeedAtlasClientState.config().largeBiomes() == this.key.largeBiomes
+                && SeedAtlasClientState.activeGameVersion().equals(this.key.gameVersion)
                 && (this.key.dimension == Dimension.NETHER
                     ? SeedAtlasBiomeOverlayRenderer.this.netherSurfaceY
                     : SeedAtlasXaeroIntegration.yFor(this.key.level)) == this.key.y;
@@ -1615,6 +1645,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     private record TileKey(
         long seed,
         boolean largeBiomes,
+        GameVersion gameVersion,
         Dimension dimension,
         ResourceKey<Level> level,
         int y,
@@ -1630,6 +1661,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         private boolean sameWorld(TileKey other) {
             return this.seed == other.seed
                 && this.largeBiomes == other.largeBiomes
+                && this.gameVersion.equals(other.gameVersion)
                 && this.dimension == other.dimension
                 && this.level.equals(other.level)
                 && this.y == other.y;
@@ -1639,6 +1671,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     private record ViewRequest(
         long seed,
         boolean largeBiomes,
+        GameVersion gameVersion,
         Dimension dimension,
         ResourceKey<Level> level,
         int y,
@@ -1661,6 +1694,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         private boolean sameGrid(ViewRequest other) {
             return this.seed == other.seed
                 && this.largeBiomes == other.largeBiomes
+                && this.gameVersion.equals(other.gameVersion)
                 && this.dimension == other.dimension
                 && this.level.equals(other.level)
                 && this.y == other.y
@@ -1689,6 +1723,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         OptionalLong netherSeed,
         OptionalLong endSeed,
         boolean largeBiomes,
+        GameVersion gameVersion,
         int overworldY,
         int netherY,
         int endY,

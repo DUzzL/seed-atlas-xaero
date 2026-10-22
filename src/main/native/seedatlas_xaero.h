@@ -44,7 +44,8 @@ enum sax_capability {
     SAX_CAP_BIOME_AREAS = 1u << 8,
     SAX_CAP_HEIGHTS = 1u << 9,
     SAX_CAP_NETHER_FLOOR = 1u << 10,
-    SAX_CAP_NETHER_CARVING = 1u << 11
+    SAX_CAP_NETHER_CARVING = 1u << 11,
+    SAX_CAP_MC_VERSIONS = 1u << 12
 };
 
 enum sax_dimension {
@@ -125,7 +126,19 @@ SAX_API uint32_t sax_capabilities(void);
 /* Copies a NUL-terminated version into out. Returns required bytes incl. NUL. */
 SAX_API int32_t sax_engine_version(char *out, int32_t capacity);
 
+/* Generates the newest supported Minecraft version. */
 SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags);
+
+/*
+ * Additive ABI 6 capability (SAX_CAP_MC_VERSIONS): generates the Minecraft
+ * version named like the Seed Atlas app does ("26.2", "1.21.4", "1.20" for the
+ * latest 1.20.x). NULL selects the newest version. Returns NULL for versions
+ * before 1.18 or names the engine does not know.
+ */
+SAX_API sax_context *sax_create_versioned(int64_t seed, uint32_t world_flags,
+                                          const char *mc_version);
+/* 1 when sax_create_versioned accepts the version name, else 0. */
+SAX_API int32_t sax_mc_version_supported(const char *mc_version);
 SAX_API void sax_destroy(sax_context *context);
 
 /* Returns SAX_OK and writes a biome id, or a negative sax_error. */
@@ -229,6 +242,7 @@ SAX_API uint32_t sax_biome_color(int32_t biome_id);
  * Camp detail uses sax_camp_detail; unchecked camp detail is -1.
  *
  * Returns the number written, capacity + 1 when truncated, or sax_error.
+ * A structure the context's version does not generate yields 0 results.
  */
 SAX_API int32_t sax_scan_structures(const sax_context *context,
                                     int32_t structure_type,

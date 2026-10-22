@@ -17,7 +17,9 @@ int main(void)
         double tx = (x - cx * 4) / 4.0, tz = (z - cz * 4) / 4.0;
         assert(context);
         for (int corner = 0; corner < 4; ++corner)
-            nether_column(&context->nether_noise, cx + (corner & 1), cz + (corner >> 1), 16, columns[corner]);
+            for (int j = 0; j <= 16; ++j)
+                columns[corner][j] = nether_density(nether_noise(&context->nether_noise,
+                    cx + (corner & 1), j, cz + (corner >> 1)) / 128.0, j * 8);
         for (int j = 0; j <= 16; ++j) {
             double base = sampleSurfaceNoise(&context->nether_noise, cx, j, cz) / 128.0;
             double error = fabs(base - nether_vanilla[i].base[j]);
@@ -46,6 +48,45 @@ int main(void)
     }
     printf("Vanilla 26.3: %zu base values, %zu final densities, %zu cave floors; max errors %.9g / %.9g\n",
            count * 17, count * 17, count * 3, max_base_error, max_density_error);
+    /* The octave-skipping noise must equal the engine's full evaluation bit for bit. */
+    {
+        sax_context *context = sax_create(INT64_C(2842062689604764280), SAX_WORLD_NORMAL);
+        long skipped = 0;
+        for (int cx = -300; cx <= 300; cx += 7)
+            for (int cz = -300; cz <= 300; cz += 11)
+                for (int j = 0; j <= 16; ++j) {
+                    double full = sampleSurfaceNoise(&context->nether_noise, cx, j, cz);
+                    double fast = nether_noise(&context->nether_noise, cx, j, cz);
+                    assert(memcmp(&full, &fast, sizeof(full)) == 0);
+                    skipped++;
+                }
+        sax_destroy(context);
+        printf("Octave-skipping Nether noise matches the engine at %ld points\n", skipped);
+    }
+    /* End heights on the shared island grid must equal the engine's mapEndSurfaceHeight. */
+    {
+        static float full[66 * 66], fast[66 * 66];
+        const int64_t seeds[] = {INT64_C(2842062689604764280), INT64_C(8371904829), -7};
+        const int scales[] = {1, 2, 4, 8};
+        const int origins[][2] = {{0, 0}, {-130, 96}, {300, -517}, {-2001, -1333}, {9000, 12345}, {-40000, 3}};
+        int compared = 0;
+        for (int s_i = 0; s_i < 3; ++s_i) {
+            sax_context *context = sax_create(seeds[s_i], SAX_WORLD_NORMAL);
+            for (int c = 0; c < 4; ++c)
+                for (int o = 0; o < 6; ++o) {
+                    int scale = scales[c], w = 66 - c * 5, h = 66 - o * 3;
+                    int x = origins[o][0] / scale, z = origins[o][1] / scale;
+                    assert(mapEndSurfaceHeight(full, &context->biome_generators[2].en,
+                        &context->end_height_noise, x, z, w, h, scale, 0) == 0);
+                    assert(end_surface_area(fast, &context->biome_generators[2].en,
+                        &context->end_height_noise, x, z, w, h, scale) == SAX_OK);
+                    assert(memcmp(full, fast, sizeof(float) * w * h) == 0);
+                    compared += w * h;
+                }
+            sax_destroy(context);
+        }
+        printf("End island grid heights match the engine at %d samples\n", compared);
+    }
     sax_context *reported = sax_create(INT64_C(2842062689604764280), SAX_WORLD_NORMAL);
     float raw, carved_height;
     /* Actual vanilla carver opens Y102/103 here; the exposed floor is 101, not 62. */

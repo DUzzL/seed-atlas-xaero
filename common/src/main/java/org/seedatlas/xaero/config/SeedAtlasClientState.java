@@ -23,6 +23,7 @@ import org.seedatlas.xaero.SeedAtlasXaero;
 import org.seedatlas.xaero.gui.SeedAtlasSettingsScreen;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -114,6 +115,35 @@ public final class SeedAtlasClientState {
 
 	private static OptionalLong seedOf(final SeedAtlasConfig.SeedValue value) {
 		return value == null ? OptionalLong.empty() : OptionalLong.of(value.seed());
+	}
+
+	/** The Minecraft version the active world or server generates with; the running game's by default. */
+	public static GameVersion activeGameVersion() {
+		initialize();
+		return GameVersion.parse(config.gameVersion(activeContext.key())).orElse(GameVersion.NEWEST);
+	}
+
+	/** True when the active context follows the running game's version instead of a chosen one. */
+	public static boolean gameVersionAutomatic() {
+		initialize();
+		return config.gameVersion(activeContext.key()) == null;
+	}
+
+	/**
+	 * Selects the version the active world or server generates with, e.g. a 26.2 server joined from
+	 * 26.3; {@code null} follows the running game again.
+	 */
+	public static void setGameVersion(final GameVersion version) {
+		initialize();
+		refreshContext(Minecraft.getInstance());
+		WorldContext context = activeContext;
+		if (context.key().isEmpty()) {
+			throw new IllegalStateException("No active world or server context");
+		}
+		String stored = version == null || version.isNewest() ? null : version.name();
+		if (config.setGameVersion(context.key(), stored)) {
+			saveAndPublish(ChangeReason.WORLD_GENERATION);
+		}
 	}
 
 	public static String currentContextKey() {
@@ -327,9 +357,12 @@ public final class SeedAtlasClientState {
 		}
 	}
 
-	public static void setHideCompletedStructures(boolean hide) {
-		// Read by the marker renderer every frame; no terrain/structure rescan needed.
-		if (config().setHideCompletedStructures(hide)) save();
+	/**
+	 * Read by the marker renderer every frame, so a slider can preview it live; no rescan is
+	 * needed. Pass {@code persist} once the value settles to write the config.
+	 */
+	public static void setCompletedOpacity(int opacity, boolean persist) {
+		if (config().setCompletedOpacity(opacity) && persist) save();
 	}
 
 	/** Marker size is read by the marker renderer every frame, so no rescan is needed. */

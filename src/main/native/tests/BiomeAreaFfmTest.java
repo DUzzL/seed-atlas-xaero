@@ -11,6 +11,7 @@ import org.seedatlas.xaero.nativeapi.StructureType;
 import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.nativeapi.BiomeTile;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.seedatlas.xaero.nativeapi.NativeException;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
@@ -24,7 +25,8 @@ public final class BiomeAreaFfmTest {
         boolean abi6 = SeedAtlasNative.engineVersion().contains("ABI 6");
         assert abi6 || (SeedAtlasNative.engineVersion().matches(".*ABI [45].*")
             && !"1".equals(System.getenv("SAX_REQUIRE_HEIGHTS")));
-        assert SeedAtlasNative.engineVersion().contains("MC 26.3");
+        assert SeedAtlasNative.engineVersion().contains("26.3") : SeedAtlasNative.engineVersion();
+        gameVersions();
         boolean heights;
         try (SeedAtlasNative camp = SeedAtlasNative.open(14L, WorldType.NORMAL)) {
             heights = camp.supportsHeights();
@@ -195,5 +197,35 @@ public final class BiomeAreaFfmTest {
             }
         }
         System.out.println("seedatlas_xaero Java FFM tests passed (heights " + (heights ? "on" : "off") + ")");
+    }
+
+    /** Servers on an older release: libraries with SAX_CAP_MC_VERSIONS generate any listed version. */
+    private static void gameVersions() {
+        assert SeedAtlasNative.supports(GameVersion.NEWEST);
+        if (!SeedAtlasNative.supports(GameVersion.ALL.getLast())) {
+            // Checked-in libraries predating version selection only generate their own release.
+            assert !"1".equals(System.getenv("SAX_REQUIRE_HEIGHTS"));
+            return;
+        }
+        for (GameVersion version : GameVersion.ALL) {
+            assert SeedAtlasNative.supports(version) : version;
+        }
+        assert !SeedAtlasNative.supports(new GameVersion("1.17"));
+        BlockBox box = new BlockBox(-4096, -4096, 4096, 4096);
+        try (SeedAtlasNative newest = SeedAtlasNative.open(8371904829L, WorldType.NORMAL);
+             SeedAtlasNative older = SeedAtlasNative.open(8371904829L, WorldType.NORMAL, new GameVersion("1.20"))) {
+            assert older.gameVersion().name().equals("1.20");
+            // Trial Chambers arrived in 1.21: an empty scan for 1.20, not an error.
+            assert older.structures(StructureType.TRIAL_CHAMBERS, box, 64, false).positions().isEmpty();
+            assert !newest.structures(StructureType.TRIAL_CHAMBERS, box, 64, false).positions().isEmpty();
+            assert !older.structures(StructureType.VILLAGE, box, 64, false).positions().isEmpty();
+        }
+        boolean rejected = false;
+        try (SeedAtlasNative ignored = SeedAtlasNative.open(1L, WorldType.NORMAL, new GameVersion("1.12"))) {
+            // unreachable
+        } catch (NativeException expected) {
+            rejected = true;
+        }
+        assert rejected;
     }
 }

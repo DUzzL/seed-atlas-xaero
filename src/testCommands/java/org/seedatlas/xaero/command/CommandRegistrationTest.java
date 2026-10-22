@@ -51,6 +51,17 @@ public final class CommandRegistrationTest {
         }
         check(dispatcher.parse("seedatlas dimension-seed overworld 1", true).getReader().canRead(),
             "The Overworld uses the base seed command");
+        // Servers on another Minecraft release than the client.
+        for (String command : new String[]{"seedatlas version", "seedatlas version 26.2", "seedatlas version 1.21.11",
+                "seedatlas version auto"}) {
+            var parsed = dispatcher.parse(command, true);
+            check(!parsed.getReader().canRead() && parsed.getContext().getCommand() != null,
+                "Expected executable version command: " + command);
+            check(dispatcher.parse(command, false).getReader().canRead(),
+                "Changing the version needs an attended client: " + command);
+        }
+        check(StringArgumentType.getString(dispatcher.parse("seedatlas version 1.21.11", true).getContext()
+            .build("seedatlas version 1.21.11"), "version").equals("1.21.11"), "Dotted versions are one word");
         // Minecraft logs every ambiguity at startup; the tree must have none.
         var ambiguities = new ArrayList<String>();
         dispatcher.findAmbiguities((parent, child, sibling, inputs) ->

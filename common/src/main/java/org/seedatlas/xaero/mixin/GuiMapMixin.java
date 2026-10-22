@@ -7,6 +7,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.ExploredTerrainRenderTypes;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
@@ -22,6 +23,7 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import xaero.lib.client.gui.widget.Tooltip;
 import xaero.map.gui.GuiMap;
+import xaero.map.gui.GuiTexturedButton;
 import xaero.map.gui.TooltipButton;
 
 /** Full-map-only controls and lifecycle gate for the seed layer. */
@@ -30,6 +32,10 @@ abstract class GuiMapMixin {
     /** Xaero's own bound with its "Unlimited zoom out" option: one pixel for 512 blocks. */
     @Unique
     private static final double SEED_ATLAS$MIN_SCALE = 0.001953125;
+    /** White 16x16 icon, tinted by Xaero's textured button like its own toolbar icons. */
+    @Unique
+    private static final Identifier SEED_ATLAS$SETTINGS_ICON =
+        Identifier.fromNamespaceAndPath("seedatlas_xaero", "textures/gui/settings.png");
 
     @Shadow
     private double cameraX;
@@ -126,9 +132,10 @@ abstract class GuiMapMixin {
         map.addButton(this.seedAtlas$layerButton);
 
         int settingsY = Math.max(0, map.height - 80);
-        this.seedAtlas$settingsButton = new TooltipButton(x, settingsY, 20, 20,
-            Component.literal("..."), button -> SeedAtlasClientState.openSettings(map),
-            () -> new Tooltip(Component.translatable("screen.seedatlas_xaero.settings")));
+        Tooltip settingsTooltip = new Tooltip(Component.translatable("screen.seedatlas_xaero.settings"));
+        this.seedAtlas$settingsButton = new GuiTexturedButton(x, settingsY, 20, 20, 0, 0, 16, 16,
+            SEED_ATLAS$SETTINGS_ICON, button -> SeedAtlasClientState.openSettings(map),
+            () -> settingsTooltip, 16, 16);
         map.addButton(this.seedAtlas$settingsButton);
 
         this.seedAtlas$displayedRevision = SeedAtlasClientState.revision();

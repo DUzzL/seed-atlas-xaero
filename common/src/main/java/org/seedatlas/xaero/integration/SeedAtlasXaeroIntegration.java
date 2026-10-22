@@ -19,6 +19,7 @@ import org.seedatlas.xaero.integration.biome.BiomeHighlighter;
 import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
 import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
 import xaero.lib.client.gui.IScreenBase;
@@ -225,7 +226,8 @@ public final class SeedAtlasXaeroIntegration {
         if (seed.isEmpty()) {
             return null;
         }
-        return withSession(seed.getAsLong(), SeedAtlasClientState.config().largeBiomes(), operation);
+        return withSession(seed.getAsLong(), SeedAtlasClientState.config().largeBiomes(),
+            SeedAtlasClientState.activeGameVersion(), operation);
     }
 
     /** For seed-independent queries such as biome names and colours. */
@@ -239,10 +241,11 @@ public final class SeedAtlasXaeroIntegration {
     }
 
     /** Runs against the engine for an explicit seed, e.g. the one a cached tile was keyed with. */
-    public static <T> T withSession(long seed, boolean largeBiomes, SessionOperation<T> operation) {
+    public static <T> T withSession(long seed, boolean largeBiomes, GameVersion gameVersion,
+                                    SessionOperation<T> operation) {
         SeedAtlasNative nativeSession;
         synchronized (NATIVE_LOCK) {
-            nativeSession = session(seed, largeBiomes);
+            nativeSession = session(seed, largeBiomes, gameVersion);
             if (nativeSession == null) {
                 return null;
             }
@@ -280,8 +283,8 @@ public final class SeedAtlasXaeroIntegration {
     }
 
     /** Called with NATIVE_LOCK held. */
-    private static SeedAtlasNative session(long seed, boolean largeBiomes) {
-        SessionKey key = new SessionKey(seed, largeBiomes);
+    private static SeedAtlasNative session(long seed, boolean largeBiomes, GameVersion gameVersion) {
+        SessionKey key = new SessionKey(seed, largeBiomes, gameVersion);
         SeedAtlasNative cached = SESSIONS.get(key);
         if (cached != null) {
             return cached;
@@ -289,7 +292,7 @@ public final class SeedAtlasXaeroIntegration {
         SeedAtlasNative opened;
         try {
             WorldType worldType = largeBiomes ? WorldType.LARGE_BIOMES : WorldType.NORMAL;
-            opened = SeedAtlasNative.open(seed, worldType);
+            opened = SeedAtlasNative.open(seed, worldType, gameVersion);
         } catch (RuntimeException | LinkageError ignored) {
             return null;
         }
@@ -311,7 +314,7 @@ public final class SeedAtlasXaeroIntegration {
         }
     }
 
-    private record SessionKey(long seed, boolean largeBiomes) { }
+    private record SessionKey(long seed, boolean largeBiomes, GameVersion gameVersion) { }
 
     private static String contextDigest(String worldId, String multiworldId) {
         try {

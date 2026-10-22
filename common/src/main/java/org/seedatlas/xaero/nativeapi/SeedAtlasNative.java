@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * Pure-Java facade for the bundled Seed Atlas MC 26.3 native generation ABI.
+ * Pure-Java facade for the bundled Seed Atlas native generation ABI.
  * Instances are safe for concurrent reads; close waits for active calls.
  */
 public final class SeedAtlasNative implements AutoCloseable {
@@ -27,29 +27,65 @@ public final class SeedAtlasNative implements AutoCloseable {
 
     private final long seed;
     private final WorldType worldType;
+    private final GameVersion gameVersion;
     private final NativeBindings bindings;
     private final NativeState nativeState;
     private final Cleaner.Cleanable cleanable;
     private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
     private boolean closed;
 
-    private SeedAtlasNative(long seed, WorldType worldType, NativeBindings bindings,
-                            MemorySegment context) {
+    private SeedAtlasNative(long seed, WorldType worldType, GameVersion gameVersion,
+                            NativeBindings bindings, MemorySegment context) {
         this.seed = seed;
         this.worldType = worldType;
+        this.gameVersion = gameVersion;
         this.bindings = bindings;
         this.nativeState = new NativeState(bindings, context);
         this.cleanable = CLEANER.register(this, nativeState);
     }
 
+    /** Generates the newest Minecraft version the engine supports. */
     public static SeedAtlasNative open(long seed, WorldType worldType) {
+        return open(seed, worldType, GameVersion.NEWEST);
+    }
+
+    /** Generates {@code gameVersion}; throws when the loaded library cannot select it. */
+    public static SeedAtlasNative open(long seed, WorldType worldType, GameVersion gameVersion) {
         Objects.requireNonNull(worldType, "worldType");
+        Objects.requireNonNull(gameVersion, "gameVersion");
         NativeBindings bindings = bindings();
-        MemorySegment context = bindings.create(seed, worldType.nativeFlags());
-        if (context.equals(MemorySegment.NULL) || context.address() == 0) {
-            throw new NativeException("Could not allocate a native Seed Atlas context");
+        MemorySegment context;
+        if (gameVersion.isNewest() && !bindings.supportsMcVersions()) {
+            context = bindings.create(seed, worldType.nativeFlags());
+        } else {
+            if (!bindings.supportsMcVersions()) {
+                throw new NativeException("Native library cannot generate Minecraft " + gameVersion.name());
+            }
+            try (Arena arena = Arena.ofConfined()) {
+                context = bindings.createVersioned(seed, worldType.nativeFlags(),
+                    arena.allocateFrom(gameVersion.name()));
+            }
         }
-        return new SeedAtlasNative(seed, worldType, bindings, context);
+        if (context.equals(MemorySegment.NULL) || context.address() == 0) {
+            throw new NativeException("Could not allocate a native Seed Atlas context for Minecraft "
+                + gameVersion.name());
+        }
+        return new SeedAtlasNative(seed, worldType, gameVersion, bindings, context);
+    }
+
+    /** True when the loaded engine can generate {@code gameVersion}. */
+    public static boolean supports(GameVersion gameVersion) {
+        Objects.requireNonNull(gameVersion, "gameVersion");
+        BindingResult result = bindingResult();
+        if (result.bindings == null) {
+            return false;
+        }
+        if (!result.bindings.supportsMcVersions()) {
+            return gameVersion.isNewest();
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            return result.bindings.mcVersionSupported(arena.allocateFrom(gameVersion.name()));
+        }
     }
 
     /** Loads and ABI-checks the library, returning a diagnostic instead of throwing. */
@@ -75,6 +111,10 @@ public final class SeedAtlasNative implements AutoCloseable {
 
     public WorldType worldType() {
         return worldType;
+    }
+
+    public GameVersion gameVersion() {
+        return gameVersion;
     }
 
     public BiomeSample biomeAt(Dimension dimension, int x, int y, int z) {

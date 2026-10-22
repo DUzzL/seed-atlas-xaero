@@ -16,6 +16,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 
 final class SeedAtlasConfigIO {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
@@ -47,7 +48,9 @@ final class SeedAtlasConfigIO {
 
 			JsonObject structures = object(root, "structures");
 			config.setStructuresEnabled(bool(structures, "enabled", config.structuresEnabled()));
-			config.setHideCompletedStructures(bool(structures, "hideCompleted", false));
+			// Version 7 and older only had a switch that hid completed structures.
+			config.setCompletedOpacity(integer(structures, "completedOpacity",
+				bool(structures, "hideCompleted", false) ? 0 : SeedAtlasConfig.DEFAULT_COMPLETED_OPACITY));
 			JsonElement completed = structures.get("completed");
 			if (completed != null && completed.isJsonArray()) {
 				for (JsonElement entry : completed.getAsJsonArray()) {
@@ -124,6 +127,15 @@ final class SeedAtlasConfigIO {
 					config.putSeedProfile(entry.getKey(), loaded);
 				}
 			}
+
+			JsonObject versions = object(root, "gameVersions");
+			for (Map.Entry<String, JsonElement> entry : versions.entrySet()) {
+				String version = entry.getValue().isJsonPrimitive() && entry.getValue().getAsJsonPrimitive().isString()
+					? entry.getValue().getAsString() : null;
+				if (!entry.getKey().isBlank() && GameVersion.parse(version).isPresent()) {
+					config.setGameVersion(entry.getKey(), GameVersion.parse(version).get().name());
+				}
+			}
 			return config;
 		} catch (RuntimeException exception) {
 			throw new IOException("Invalid Seed Atlas config JSON", exception);
@@ -146,6 +158,8 @@ final class SeedAtlasConfigIO {
 
 		JsonObject structures = new JsonObject();
 		structures.addProperty("enabled", config.structuresEnabled());
+		structures.addProperty("completedOpacity", config.completedOpacity());
+		// Older releases read only this switch.
 		structures.addProperty("hideCompleted", config.hideCompletedStructures());
 		structures.add("completed", GSON.toJsonTree(config.completedSnapshot()));
 		root.add("structures", structures);
@@ -199,6 +213,10 @@ final class SeedAtlasConfigIO {
 			profiles.add(entry.getKey(), profile);
 		}
 		root.add("seeds", profiles);
+
+		JsonObject versions = new JsonObject();
+		config.gameVersionSnapshot().forEach(versions::addProperty);
+		root.add("gameVersions", versions);
 
 		Path temporary = path.resolveSibling(path.getFileName() + ".tmp");
 		try (Writer writer = Files.newBufferedWriter(

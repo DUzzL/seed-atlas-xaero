@@ -1,8 +1,11 @@
 package org.seedatlas.xaero.gui;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
@@ -33,10 +36,8 @@ public final class MarkerSettingsScreen extends SeedAtlasScreen {
 
 		int headerGap = 6;
 		int headerHalf = (listWidth - headerGap) / 2;
-		this.addRenderableWidget(Button.builder(completedFilterMessage(), button -> {
-			SeedAtlasClientState.setHideCompletedStructures(!SeedAtlasClientState.config().hideCompletedStructures());
-			button.setMessage(completedFilterMessage());
-		}).bounds(listLeft, 40, headerHalf, 20).build());
+		this.addRenderableWidget(new CompletedOpacitySlider(listLeft, 40, headerHalf,
+			SeedAtlasClientState.config().completedOpacity()));
 
 		this.addRenderableWidget(Button.builder(markerSizeMessage(), button -> {
 			SeedAtlasClientState.setMarkerSize(SeedAtlasConfig.nextMarkerSize(SeedAtlasClientState.config().markerSize()));
@@ -63,10 +64,6 @@ public final class MarkerSettingsScreen extends SeedAtlasScreen {
 		graphics.centeredText(this.font, status, this.width / 2, 23, 0xFFB8B8B8);
 	}
 
-	private static Component completedFilterMessage() {
-		return Component.translatable("options.seedatlas_xaero.hide_completed",
-			SeedAtlasClientState.config().hideCompletedStructures() ? "ON" : "OFF");
-	}
 
 	private static Component markerSizeMessage() {
 		return Component.translatable("options.seedatlas_xaero.marker_size",
@@ -78,5 +75,37 @@ public final class MarkerSettingsScreen extends SeedAtlasScreen {
 		SeedAtlasClientState.save();
 		// Parent is the main Seed Atlas settings screen; keep heavy work paused.
 		this.minecraft.gui.setScreen(this.parent);
+	}
+
+	/** Fades completed structures from 100 % (like any marker) down to 0 % (hidden), previewed live on the map. */
+	private static final class CompletedOpacitySlider extends AbstractSliderButton {
+		private CompletedOpacitySlider(final int x, final int y, final int width, final int percent) {
+			super(x, y, width, 20, Component.empty(), percent / 100.0D);
+			this.setTooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.completed_opacity")));
+			this.updateMessage();
+		}
+
+		private int percent() {
+			return (int) Math.round(this.value * 100.0D);
+		}
+
+		@Override
+		protected void updateMessage() {
+			int percent = this.percent();
+			this.setMessage(Component.translatable("options.seedatlas_xaero.completed_opacity", percent == 0
+				? Component.translatable("options.seedatlas_xaero.completed_opacity.hidden")
+				: Component.literal(percent + " %")));
+		}
+
+		@Override
+		protected void applyValue() {
+			SeedAtlasClientState.setCompletedOpacity(this.percent(), false);
+		}
+
+		@Override
+		public void onRelease(final MouseButtonEvent event) {
+			super.onRelease(event);
+			SeedAtlasClientState.save();
+		}
 	}
 }

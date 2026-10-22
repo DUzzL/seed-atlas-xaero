@@ -479,6 +479,40 @@ int main(void)
         sax_destroy(placement_context);
     }
 
+    /* Version selection for servers that run an older Minecraft release. */
+    {
+        int32_t newest[SAX_CHUNK_SAMPLE_COUNT];
+        sax_context *older;
+        assert((sax_capabilities() & SAX_CAP_MC_VERSIONS) != 0);
+        assert(sax_mc_version_supported("26.2") == 1);
+        assert(sax_mc_version_supported("1.18") == 1);
+        assert(sax_mc_version_supported("1.17") == 0);
+        assert(sax_mc_version_supported("not a version") == 0);
+        assert(sax_mc_version_supported(NULL) == 0);
+        assert(sax_create_versioned(1, SAX_WORLD_NORMAL, "1.16") == NULL);
+
+        older = sax_create_versioned(INT64_C(8371904829), SAX_WORLD_NORMAL, "26.3");
+        assert(older != NULL);
+        assert(sax_biome_area_sampled(context, SAX_DIM_OVERWORLD,
+                   -4096, 2048, 64, 16, 16, 16, newest, NULL, 256) == SAX_OK);
+        assert(sax_biome_area_sampled(older, SAX_DIM_OVERWORLD,
+                   -4096, 2048, 64, 16, 16, 16, ids, NULL, 256) == SAX_OK);
+        assert(memcmp(newest, ids, sizeof(newest)) == 0); /* NULL means newest */
+        sax_destroy(older);
+
+        older = sax_create_versioned(INT64_C(8371904829), SAX_WORLD_NORMAL, "1.20");
+        assert(older != NULL);
+        assert(sax_biome_at(older, SAX_DIM_OVERWORLD, 0, 64, 0, &biome) == SAX_OK);
+        /* Trial Chambers arrived in 1.21: an empty scan, not an error. */
+        assert(sax_scan_structures(older, SAX_TRIAL_CHAMBERS,
+                   -4096, -4096, 4096, 4096, 0, results, 64) == 0);
+        assert(sax_scan_structures(context, SAX_TRIAL_CHAMBERS,
+                   -4096, -4096, 4096, 4096, 0, results, 64) > 0);
+        assert(sax_scan_structures(older, SAX_VILLAGE,
+                   -4096, -4096, 4096, 4096, 0, results, 64) > 0);
+        sax_destroy(older);
+    }
+
     assert(sax_spawn(context, 0, position) == SAX_OK);
     count = sax_scan_strongholds(context, -30000, -30000, 30000, 30000,
                                  0, results, 64);

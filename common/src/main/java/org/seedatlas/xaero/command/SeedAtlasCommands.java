@@ -11,11 +11,14 @@ import org.seedatlas.xaero.SeedAtlasXaero;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.seedatlas.xaero.nativeapi.NativeStatus;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 
 /** Registers the entirely client-side {@code /seedatlas} command tree. */
 public final class SeedAtlasCommands {
+	private static final String AUTO_VERSION = "auto";
+
 	private SeedAtlasCommands() {
 	}
 
@@ -37,6 +40,17 @@ public final class SeedAtlasCommands {
 					.executes(context -> clearDimensionSeed(source.apply(context.getSource()), Dimension.NETHER)))
 				.then(LiteralArgumentBuilder.<S>literal("end")
 					.executes(context -> clearDimensionSeed(source.apply(context.getSource()), Dimension.END))))
+			.then(LiteralArgumentBuilder.<S>literal("version")
+				.requires(value -> source.apply(value).attended())
+				.executes(context -> showGameVersion(source.apply(context.getSource())))
+				.then(RequiredArgumentBuilder.<S, String>argument("version", StringArgumentType.word())
+					.suggests((context, builder) -> {
+						builder.suggest(AUTO_VERSION);
+						GameVersion.ALL.forEach(version -> builder.suggest(version.name()));
+						return builder.buildFuture();
+					})
+					.executes(context -> setGameVersion(source.apply(context.getSource()),
+						StringArgumentType.getString(context, "version")))))
 			.then(LiteralArgumentBuilder.<S>literal("status")
 				.executes(context -> status(source.apply(context.getSource()))))
 			.then(LiteralArgumentBuilder.<S>literal("settings")
@@ -116,6 +130,48 @@ public final class SeedAtlasCommands {
 		}
 	}
 
+	/** {@code version <name>} for servers on another release than the client; {@code auto} follows the client. */
+	private static int setGameVersion(final SeedAtlasCommandSource source, final String input) {
+		GameVersion version = null;
+		if (!AUTO_VERSION.equalsIgnoreCase(input.trim())) {
+			version = GameVersion.parse(input).orElse(null);
+			if (version == null) {
+				source.sendError(Component.translatable("command.seedatlas_xaero.game_version_unknown", input.trim(),
+					String.join(", ", GameVersion.ALL.stream().map(GameVersion::name).toList())));
+				return 0;
+			}
+			if (!SeedAtlasNative.supports(version)) {
+				source.sendError(Component.translatable("command.seedatlas_xaero.game_version_unsupported", version.name()));
+				return 0;
+			}
+		}
+		try {
+			SeedAtlasClientState.setGameVersion(version);
+		} catch (IllegalStateException exception) {
+			source.sendError(Component.translatable("command.seedatlas_xaero.no_context"));
+			return 0;
+		}
+		return showGameVersion(source);
+	}
+
+	private static int showGameVersion(final SeedAtlasCommandSource source) {
+		SeedAtlasClientState.refreshContext(source.getClient());
+		if (SeedAtlasClientState.currentContextKey().isEmpty()) {
+			source.sendError(Component.translatable("command.seedatlas_xaero.no_context"));
+			return 0;
+		}
+		source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.game_version", gameVersionName()));
+		return 1;
+	}
+
+	/** "26.2", or "Auto (26.3)" while the context follows the running game. */
+	public static Component gameVersionName() {
+		GameVersion version = SeedAtlasClientState.activeGameVersion();
+		return SeedAtlasClientState.gameVersionAutomatic()
+			? Component.translatable("options.seedatlas_xaero.game_version.auto", version.name())
+			: Component.literal(version.name());
+	}
+
 	private static int clearSeed(final SeedAtlasCommandSource source) {
 		SeedAtlasClientState.refreshContext(source.getClient());
 		if (SeedAtlasClientState.currentContextKey().isEmpty()) {
@@ -175,6 +231,7 @@ public final class SeedAtlasCommands {
 					: "options.seedatlas_xaero.world_type.normal"
 			)
 		));
+		source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.game_version", gameVersionName()));
 		source.sendFeedback(Component.translatable(
 			"command.seedatlas_xaero.status.structures",
 			onOff(config.structuresEnabled())

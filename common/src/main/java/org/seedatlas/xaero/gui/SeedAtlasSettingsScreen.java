@@ -41,12 +41,11 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 		}).bounds(left, 34, halfWidth, 20).build();
 		this.addRenderableWidget(layer);
 
-		Button worldType = Button.builder(worldTypeMessage(config.largeBiomes()), button -> {
-			boolean large = !SeedAtlasClientState.config().largeBiomes();
-			SeedAtlasClientState.setLargeBiomes(large);
-			button.setMessage(worldTypeMessage(large));
-		}).bounds(left + halfWidth + gap, 34, halfWidth, 20).build();
-		this.addRenderableWidget(worldType);
+		this.addRenderableWidget(Button.builder(worldGenerationMessage(), button -> {
+			this.commitValues();
+			this.minecraft.gui.setScreen(new WorldGenerationScreen(this));
+		}).bounds(left + halfWidth + gap, 34, halfWidth, 20)
+			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.world_generation"))).build());
 
 		this.opacity = new OpacitySlider(left, 59, halfWidth, config.opacity());
 		this.addRenderableWidget(this.opacity);
@@ -185,10 +184,13 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 		return Component.translatable("options.seedatlas_xaero.layer", toggleValue(enabled));
 	}
 
-	private static Component worldTypeMessage(final boolean largeBiomes) {
+	/** "World: 26.2, Normal"; the version is the active world's or server's. */
+	private static Component worldGenerationMessage() {
 		return Component.translatable(
-			"options.seedatlas_xaero.world_type",
-			Component.translatable(largeBiomes ? "options.seedatlas_xaero.world_type.large" : "options.seedatlas_xaero.world_type.normal")
+			"options.seedatlas_xaero.world_generation",
+			SeedAtlasClientState.activeGameVersion().name(),
+			Component.translatable(SeedAtlasClientState.config().largeBiomes()
+				? "options.seedatlas_xaero.world_type.large" : "options.seedatlas_xaero.world_type.normal")
 		);
 	}
 
