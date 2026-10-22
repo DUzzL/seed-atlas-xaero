@@ -32,7 +32,7 @@ public final class NearestFinder {
         for (int i = 0; i < STRUCTURE_RADII.length; i++) {
             int r = STRUCTURE_RADII[i];
             BlockBox box = new BlockBox(px - r, pz - r, px + r, pz + r);
-            List<SeedAtlasStructureMarker> found = SeedAtlasXaeroIntegration.withSession(
+            List<SeedAtlasStructureMarker> found = SeedAtlasXaeroIntegration.withSession(dimension,
                 s -> SeedAtlasStructureMarkerSource.scanWithSession(s, level, dimension, box, type));
             Result best = null;
             if (found != null) {
@@ -62,7 +62,7 @@ public final class NearestFinder {
             int ox = Math.floorDiv(px - r, step) * step;
             int oz = Math.floorDiv(pz - r, step) * step;
             int size = 2 * r / step;
-            BiomeRegion region = SeedAtlasXaeroIntegration.withSession(
+            BiomeRegion region = SeedAtlasXaeroIntegration.withSession(dimension,
                 s -> s.biomeArea(dimension, ox, oz, y, step, size, size));
             if (region == null) return null;
             Result best = null;

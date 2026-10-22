@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.OptionalLong;
 import net.minecraft.client.Minecraft;
@@ -32,9 +33,9 @@ public final class SeedAtlasXaeroIntegration {
     private static volatile double observedMapScale = 1.0;
     private static volatile List<BiomeSample> availableBiomes;
     private static boolean initialized;
-    private static SeedAtlasNative session;
-    private static long sessionSeed;
-    private static boolean sessionLargeBiomes;
+    /** One engine context per seed; up to three when every dimension has its own seed. */
+    private static final int MAX_SESSIONS = 3;
+    private static final LinkedHashMap<SessionKey, SeedAtlasNative> SESSIONS = new LinkedHashMap<>(4, 0.75F, true);
 
     private SeedAtlasXaeroIntegration() {
     }
@@ -68,7 +69,7 @@ public final class SeedAtlasXaeroIntegration {
 
     public static boolean isLayerConfigured() {
         return SeedAtlasClientState.config().layerEnabled()
-            && SeedAtlasClientState.activeSeed().isPresent();
+            && SeedAtlasClientState.hasActiveSeed();
     }
 
     public static boolean isFullMapActive() {
@@ -189,7 +190,7 @@ public final class SeedAtlasXaeroIntegration {
         if (cached != null) {
             return cached;
         }
-        List<BiomeSample> found = withSession(session -> {
+        List<BiomeSample> found = withAnySession(session -> {
             List<BiomeSample> biomes = new ArrayList<>();
             for (int id = 0; id < BiomeHighlighter.BIOME_ID_LIMIT; ++id) {
                 String name = session.biomeName(id);
@@ -208,14 +209,30 @@ public final class SeedAtlasXaeroIntegration {
         return found;
     }
 
-    public static <T> T withSession(SessionOperation<T> operation) {
-        OptionalLong seed = SeedAtlasClientState.activeSeed();
+    /** Runs against the engine for the seed that generates {@code dimension} in the active context. */
+    public static <T> T withSession(Dimension dimension, SessionOperation<T> operation) {
+        OptionalLong seed = SeedAtlasClientState.activeSeed(dimension);
         if (seed.isEmpty()) {
             return null;
         }
+        return withSession(seed.getAsLong(), SeedAtlasClientState.config().largeBiomes(), operation);
+    }
+
+    /** For seed-independent queries such as biome names and colours. */
+    public static <T> T withAnySession(SessionOperation<T> operation) {
+        for (Dimension dimension : Dimension.values()) {
+            if (SeedAtlasClientState.activeSeed(dimension).isPresent()) {
+                return withSession(dimension, operation);
+            }
+        }
+        return null;
+    }
+
+    /** Runs against the engine for an explicit seed, e.g. the one a cached tile was keyed with. */
+    public static <T> T withSession(long seed, boolean largeBiomes, SessionOperation<T> operation) {
         SeedAtlasNative nativeSession;
         synchronized (NATIVE_LOCK) {
-            nativeSession = session(seed.getAsLong(), SeedAtlasClientState.config().largeBiomes());
+            nativeSession = session(seed, largeBiomes);
             if (nativeSession == null) {
                 return null;
             }
@@ -257,35 +274,39 @@ public final class SeedAtlasXaeroIntegration {
         return SeedAtlasBiomeOverlayRenderer.INSTANCE.currentSampleStep();
     }
 
+    /** Called with NATIVE_LOCK held. */
     private static SeedAtlasNative session(long seed, boolean largeBiomes) {
-        if (session != null && sessionSeed == seed && sessionLargeBiomes == largeBiomes) {
-            return session;
+        SessionKey key = new SessionKey(seed, largeBiomes);
+        SeedAtlasNative cached = SESSIONS.get(key);
+        if (cached != null) {
+            return cached;
         }
-        closeSession();
+        SeedAtlasNative opened;
         try {
             WorldType worldType = largeBiomes ? WorldType.LARGE_BIOMES : WorldType.NORMAL;
-            session = SeedAtlasNative.open(seed, worldType);
-            sessionSeed = seed;
-            sessionLargeBiomes = largeBiomes;
-            return session;
+            opened = SeedAtlasNative.open(seed, worldType);
         } catch (RuntimeException | LinkageError ignored) {
-            session = null;
             return null;
         }
+        if (SESSIONS.size() >= MAX_SESSIONS) {
+            var eldest = SESSIONS.entrySet().iterator().next();
+            SESSIONS.remove(eldest.getKey());
+            closeSession(eldest.getValue());
+        }
+        SESSIONS.put(key, opened);
+        return opened;
     }
 
-    private static void closeSession() {
-        if (session == null) {
-            return;
-        }
+    /** In-flight calls finish first: closing waits for the session's lifecycle lock. */
+    private static void closeSession(SeedAtlasNative session) {
         try {
             session.close();
         } catch (Exception ignored) {
             // Native cleanup cannot be allowed to take the client down.
-        } finally {
-            session = null;
         }
     }
+
+    private record SessionKey(long seed, boolean largeBiomes) { }
 
     private static String contextDigest(String worldId, String multiworldId) {
         try {

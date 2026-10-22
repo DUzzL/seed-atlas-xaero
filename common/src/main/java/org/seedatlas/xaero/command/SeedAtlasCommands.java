@@ -1,7 +1,5 @@
 package org.seedatlas.xaero.command;
 
-import java.util.OptionalLong;
-
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import java.util.function.Function;
@@ -10,6 +8,7 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
+import org.seedatlas.xaero.nativeapi.Dimension;
 import org.seedatlas.xaero.nativeapi.NativeStatus;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 
@@ -25,6 +24,10 @@ public final class SeedAtlasCommands {
 				.requires(value -> source.apply(value).attended())
 				.then(RequiredArgumentBuilder.<S, String>argument("seed", StringArgumentType.greedyString())
 					.executes(context -> setSeed(source.apply(context.getSource()), StringArgumentType.getString(context, "seed")))))
+			.then(LiteralArgumentBuilder.<S>literal("dimension-seed")
+				.requires(value -> source.apply(value).attended())
+				.then(dimensionSeed("nether", Dimension.NETHER, source))
+				.then(dimensionSeed("end", Dimension.END, source)))
 			.then(LiteralArgumentBuilder.<S>literal("clear")
 				.requires(value -> source.apply(value).attended())
 				.executes(context -> clearSeed(source.apply(context.getSource()))))
@@ -34,6 +37,57 @@ public final class SeedAtlasCommands {
 				.requires(value -> source.apply(value).attended())
 				.executes(context -> openSettings(source.apply(context.getSource()))))
 		);
+	}
+
+	/** {@code dimension-seed <name> <seed>} gives one dimension its own seed; {@code clear} removes it. */
+	private static <S> LiteralArgumentBuilder<S> dimensionSeed(
+		final String name, final Dimension dimension, final Function<S, SeedAtlasCommandSource> source
+	) {
+		return LiteralArgumentBuilder.<S>literal(name)
+			.then(LiteralArgumentBuilder.<S>literal("clear")
+				.executes(context -> clearDimensionSeed(source.apply(context.getSource()), dimension)))
+			.then(RequiredArgumentBuilder.<S, String>argument("seed", StringArgumentType.greedyString())
+				.executes(context -> setDimensionSeed(source.apply(context.getSource()), dimension,
+					StringArgumentType.getString(context, "seed"))));
+	}
+
+	private static int setDimensionSeed(final SeedAtlasCommandSource source, final Dimension dimension, final String input) {
+		try {
+			long seed = SeedAtlasClientState.setDimensionSeed(dimension, input);
+			source.sendFeedback(Component.translatable(
+				"command.seedatlas_xaero.dimension_seed_set",
+				dimensionName(dimension),
+				input.trim(),
+				seed,
+				SeedAtlasClientState.currentContextLabel()
+			));
+			return 1;
+		} catch (IllegalArgumentException exception) {
+			source.sendError(Component.translatable("command.seedatlas_xaero.seed_blank"));
+			return 0;
+		} catch (IllegalStateException exception) {
+			source.sendError(Component.translatable("command.seedatlas_xaero.no_context"));
+			return 0;
+		}
+	}
+
+	private static int clearDimensionSeed(final SeedAtlasCommandSource source, final Dimension dimension) {
+		SeedAtlasClientState.refreshContext(source.getClient());
+		if (SeedAtlasClientState.currentContextKey().isEmpty()) {
+			source.sendError(Component.translatable("command.seedatlas_xaero.no_context"));
+			return 0;
+		}
+		if (SeedAtlasClientState.clearDimensionSeed(dimension)) {
+			source.sendFeedback(Component.translatable("command.seedatlas_xaero.dimension_seed_cleared",
+				dimensionName(dimension)));
+			return 1;
+		}
+		source.sendFeedback(Component.translatable("command.seedatlas_xaero.no_dimension_seed", dimensionName(dimension)));
+		return 0;
+	}
+
+	public static Component dimensionName(final Dimension dimension) {
+		return Component.translatable("dimension.seedatlas_xaero." + dimension.name().toLowerCase(java.util.Locale.ROOT));
 	}
 
 	private static int setSeed(final SeedAtlasCommandSource source, String input) {
@@ -78,12 +132,23 @@ public final class SeedAtlasCommands {
 		}
 
 		source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.context", contextLabel));
-		OptionalLong seed = SeedAtlasClientState.activeSeed();
-		if (seed.isPresent()) {
-			String input = SeedAtlasClientState.activeSeedInput().orElse(Long.toString(seed.getAsLong()));
-			source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.seed", input, seed.getAsLong()));
-		} else {
+		SeedAtlasConfig.SeedProfile profile = SeedAtlasClientState.activeProfile().orElse(null);
+		if (profile == null) {
 			source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.no_seed"));
+		} else {
+			if (profile.base() != null) {
+				source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.seed",
+					profile.base().input(), profile.base().seed()));
+			} else {
+				source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.no_base_seed"));
+			}
+			for (Dimension dimension : new Dimension[]{Dimension.NETHER, Dimension.END}) {
+				SeedAtlasConfig.SeedValue own = profile.ownSeed(dimension);
+				if (own != null) {
+					source.sendFeedback(Component.translatable("command.seedatlas_xaero.status.dimension_seed",
+						dimensionName(dimension), own.input(), own.seed()));
+				}
+			}
 		}
 
 		SeedAtlasConfig config = SeedAtlasClientState.config();

@@ -28,6 +28,27 @@ public final class CommandRegistrationTest {
         }
         check(dispatcher.parse("seedatlas seed", true).getContext().getCommand() == null,
             "Setting a seed requires an argument");
+        // Issue #4: own seeds for the Nether and End.
+        for (String dimension : new String[]{"nether", "end"}) {
+            for (String seed : new String[]{"-42", "text seed with spaces"}) {
+                String command = "seedatlas dimension-seed " + dimension + " " + seed;
+                var parsed = dispatcher.parse(command, true);
+                check(!parsed.getReader().canRead() && parsed.getContext().getCommand() != null,
+                    "Expected executable dimension seed command: " + command);
+                check(StringArgumentType.getString(parsed.getContext().build(command), "seed").equals(seed),
+                    "Dimension seed text must survive the loader adapter");
+                check(dispatcher.parse(command, false).getReader().canRead(),
+                    "Changing a dimension seed needs an attended client");
+            }
+            var clear = dispatcher.parse("seedatlas dimension-seed " + dimension + " clear", true);
+            check(!clear.getReader().canRead() && clear.getContext().getCommand() != null
+                    && clear.getContext().getNodes().getLast().getNode().getName().equals("clear"),
+                "clear removes the dimension seed instead of setting the text seed \"clear\"");
+            check(dispatcher.parse("seedatlas dimension-seed " + dimension, true).getContext().getCommand() == null,
+                "A dimension seed requires a value");
+        }
+        check(dispatcher.parse("seedatlas dimension-seed overworld 1", true).getReader().canRead(),
+            "The Overworld uses the base seed command");
         System.out.println("Shared client command registration tests passed");
     }
 

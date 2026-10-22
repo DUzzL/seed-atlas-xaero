@@ -8,10 +8,11 @@ import java.util.Set;
 
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
+import org.seedatlas.xaero.nativeapi.Dimension;
 
 /** Mutable, synchronized representation of the client configuration. */
 public final class SeedAtlasConfig {
-	public static final int CURRENT_VERSION = 6;
+	public static final int CURRENT_VERSION = 7;
 	public static final int DEFAULT_OPACITY = 255;
 	public static final int DEFAULT_BIOME_RESOLUTION = 1;
 	public static final int DEFAULT_WORKER_THREADS = 0;
@@ -394,10 +395,56 @@ public final class SeedAtlasConfig {
 	}
 
 	/** Seed text is kept so numeric and textual inputs can both be shown in status UI. */
-	public record SeedProfile(String input, long seed, String contextLabel) {
+	public record SeedValue(String input, long seed) {
+		public SeedValue {
+			input = input == null || input.isBlank() ? Long.toString(seed) : input;
+		}
+	}
+
+	/**
+	 * Seeds of one world or server. {@code base} applies to every dimension without its own seed,
+	 * because some servers generate the Nether or End from a different seed than the Overworld.
+	 * Any of the three may be absent, but a stored profile always has at least one.
+	 */
+	public record SeedProfile(SeedValue base, SeedValue nether, SeedValue end, String contextLabel) {
 		public SeedProfile {
-			input = input == null ? Long.toString(seed) : input;
 			contextLabel = contextLabel == null ? "" : contextLabel;
+		}
+
+		public SeedProfile(final String input, final long seed, final String contextLabel) {
+			this(new SeedValue(input, seed), null, null, contextLabel);
+		}
+
+		/** The seed generating {@code dimension}: its own seed, else the base seed. */
+		public SeedValue seedFor(final Dimension dimension) {
+			SeedValue own = ownSeed(dimension);
+			return own != null ? own : this.base;
+		}
+
+		/** The Nether's or End's own seed; null when it follows the base seed (always for the Overworld). */
+		public SeedValue ownSeed(final Dimension dimension) {
+			return switch (dimension) {
+				case NETHER -> this.nether;
+				case END -> this.end;
+				case OVERWORLD -> null;
+			};
+		}
+
+		public SeedProfile withBase(final SeedValue value) {
+			return new SeedProfile(value, this.nether, this.end, this.contextLabel);
+		}
+
+		/** Replaces (or with {@code null} removes) the own seed of the Nether or End. */
+		public SeedProfile withDimension(final Dimension dimension, final SeedValue value) {
+			return switch (dimension) {
+				case NETHER -> new SeedProfile(this.base, value, this.end, this.contextLabel);
+				case END -> new SeedProfile(this.base, this.nether, value, this.contextLabel);
+				case OVERWORLD -> throw new IllegalArgumentException("The Overworld uses the base seed");
+			};
+		}
+
+		public boolean isEmpty() {
+			return this.base == null && this.nether == null && this.end == null;
 		}
 	}
 }

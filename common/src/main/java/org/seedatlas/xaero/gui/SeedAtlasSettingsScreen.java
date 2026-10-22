@@ -1,6 +1,6 @@
 package org.seedatlas.xaero.gui;
 
-import java.util.OptionalLong;
+import java.util.Locale;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractSliderButton;
@@ -13,6 +13,7 @@ import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
+import org.seedatlas.xaero.nativeapi.Dimension;
 import xaero.map.gui.GuiMap;
 
 /** Compact main settings screen, visually kept close to Xaero's option menus. */
@@ -148,11 +149,7 @@ public final class SeedAtlasSettingsScreen extends Screen {
 			0xFFA0A0A0
 		);
 
-		OptionalLong seed = SeedAtlasClientState.activeSeed();
-		Component status = seed.isPresent()
-			? Component.translatable("screen.seedatlas_xaero.active_seed", seed.getAsLong())
-			: Component.translatable("screen.seedatlas_xaero.no_seed");
-		graphics.centeredText(this.font, status, this.width / 2, this.height - 42, 0xFFA0A0A0);
+		graphics.centeredText(this.font, seedStatus(), this.width / 2, this.height - 42, 0xFFA0A0A0);
 	}
 
 	@Override
@@ -197,6 +194,26 @@ public final class SeedAtlasSettingsScreen extends Screen {
 			"options.seedatlas_xaero.world_type",
 			Component.translatable(largeBiomes ? "options.seedatlas_xaero.world_type.large" : "options.seedatlas_xaero.world_type.normal")
 		);
+	}
+
+	/** "Active seed: X", followed by the Nether's and End's own seeds when they have one. */
+	private static Component seedStatus() {
+		SeedAtlasConfig.SeedProfile profile = SeedAtlasClientState.activeProfile().orElse(null);
+		if (profile == null) {
+			return Component.translatable("screen.seedatlas_xaero.no_seed");
+		}
+		var status = (profile.base() == null
+			? Component.translatable("screen.seedatlas_xaero.no_base_seed")
+			: Component.translatable("screen.seedatlas_xaero.active_seed", profile.base().seed())).copy();
+		for (Dimension dimension : new Dimension[]{Dimension.NETHER, Dimension.END}) {
+			SeedAtlasConfig.SeedValue own = profile.ownSeed(dimension);
+			if (own != null) {
+				status.append(" · ").append(Component.translatable("screen.seedatlas_xaero.dimension_seed",
+					Component.translatable("dimension.seedatlas_xaero." + dimension.name().toLowerCase(Locale.ROOT)),
+					own.seed()));
+			}
+		}
+		return status;
 	}
 
 	private static Component terrainStyleMessage(final boolean enabled) {

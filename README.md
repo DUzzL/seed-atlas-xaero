@@ -14,7 +14,8 @@ Singleplayer seeds are detected automatically. On multiplayer, set a known seed 
 
 - `/seedatlas settings` opens the settings.
 - `/seedatlas status` shows the active seed and generation settings.
-- `/seedatlas clear` removes the saved seed.
+- `/seedatlas dimension-seed <nether|end> <seed>` sets a separate seed for the Nether or End, for servers that generate them from another seed; `/seedatlas dimension-seed <nether|end> clear` returns that dimension to the main seed.
+- `/seedatlas clear` removes the saved seeds.
 
 Use **SA** on the world map to toggle the layer and **…** to open settings. Settings include structure filters, biome highlighting, opacity and performance controls. Structure context menus let you mark locations as completed and create waypoints when Xaero's Minimap is installed.
 

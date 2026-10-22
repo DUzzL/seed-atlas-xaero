@@ -21,6 +21,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.storage.LevelResource;
 import org.seedatlas.xaero.gui.SeedAtlasSettingsScreen;
+import org.seedatlas.xaero.nativeapi.Dimension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,8 +42,8 @@ public final class SeedAtlasClientState {
 	private static volatile SeedAtlasConfig config = new SeedAtlasConfig();
 	private static volatile boolean initialized;
 	private static volatile WorldContext activeContext = NO_CONTEXT;
-	private static volatile OptionalLong activeSeed = OptionalLong.empty();
-	private static volatile String activeSeedInput;
+	/** Seeds of the active context, or null when none is configured. */
+	private static volatile SeedAtlasConfig.SeedProfile activeProfile;
 	private static volatile String autoDetectSuppressedContext;
 	private static volatile ContextProvider contextProvider;
 	private static volatile WorldContext externalContext;
@@ -89,14 +90,40 @@ public final class SeedAtlasClientState {
 		return CONFIG_PATH;
 	}
 
+	/** The base seed: the Overworld's, and every dimension's that has no seed of its own. */
 	public static OptionalLong activeSeed() {
 		initialize();
-		return activeSeed;
+		SeedAtlasConfig.SeedProfile profile = activeProfile;
+		return profile == null ? OptionalLong.empty() : seedOf(profile.base());
 	}
 
 	public static Optional<String> activeSeedInput() {
 		initialize();
-		return Optional.ofNullable(activeSeedInput);
+		SeedAtlasConfig.SeedProfile profile = activeProfile;
+		return profile == null || profile.base() == null ? Optional.empty() : Optional.of(profile.base().input());
+	}
+
+	/** The seed that generates {@code dimension} in the active context. */
+	public static OptionalLong activeSeed(final Dimension dimension) {
+		initialize();
+		SeedAtlasConfig.SeedProfile profile = activeProfile;
+		return profile == null ? OptionalLong.empty() : seedOf(profile.seedFor(dimension));
+	}
+
+	/** True when at least one dimension of the active context has a seed. */
+	public static boolean hasActiveSeed() {
+		initialize();
+		SeedAtlasConfig.SeedProfile profile = activeProfile;
+		return profile != null && !profile.isEmpty();
+	}
+
+	public static Optional<SeedAtlasConfig.SeedProfile> activeProfile() {
+		initialize();
+		return Optional.ofNullable(activeProfile);
+	}
+
+	private static OptionalLong seedOf(final SeedAtlasConfig.SeedValue value) {
+		return value == null ? OptionalLong.empty() : OptionalLong.of(value.seed());
 	}
 
 	public static String currentContextKey() {
@@ -129,29 +156,26 @@ public final class SeedAtlasClientState {
 			if (contextChanged && !nextContext.key().equals(autoDetectSuppressedContext)) {
 				autoDetectSuppressedContext = null;
 			}
-			if (!contextChanged && (activeSeed.isPresent() || detectedSingleplayerSeed.isEmpty())) {
+			SeedAtlasConfig.SeedProfile current = activeProfile;
+			if (!contextChanged && (current != null && current.base() != null || detectedSingleplayerSeed.isEmpty())) {
 				return;
 			}
 
 			activeContext = nextContext;
 			if (nextContext.key().isEmpty()) {
-				activeSeed = OptionalLong.empty();
-				activeSeedInput = null;
+				activeProfile = null;
 			} else {
 				SeedAtlasConfig.SeedProfile profile = config.seedProfile(nextContext.key());
-				if (detectedSingleplayerSeed.isPresent() && (profile == null || profile.seed() != detectedSingleplayerSeed.getAsLong())) {
+				if (detectedSingleplayerSeed.isPresent() && (profile == null || profile.base() == null
+					|| profile.base().seed() != detectedSingleplayerSeed.getAsLong())) {
 					long seed = detectedSingleplayerSeed.getAsLong();
-					profile = new SeedAtlasConfig.SeedProfile(Long.toString(seed), seed, nextContext.label());
+					SeedAtlasConfig.SeedValue base = new SeedAtlasConfig.SeedValue(Long.toString(seed), seed);
+					profile = profile == null
+						? new SeedAtlasConfig.SeedProfile(base, null, null, nextContext.label())
+						: new SeedAtlasConfig.SeedProfile(base, profile.nether(), profile.end(), nextContext.label());
 					profileChanged = config.putSeedProfile(nextContext.key(), profile);
 				}
-
-				if (profile == null) {
-					activeSeed = OptionalLong.empty();
-					activeSeedInput = null;
-				} else {
-					activeSeed = OptionalLong.of(profile.seed());
-					activeSeedInput = profile.input();
-				}
+				activeProfile = profile;
 			}
 		}
 
@@ -201,13 +225,76 @@ public final class SeedAtlasClientState {
 		}
 
 		synchronized (LOCK) {
-			config.putSeedProfile(context.key(), new SeedAtlasConfig.SeedProfile(normalized, seed, context.label()));
-			activeSeed = OptionalLong.of(seed);
-			activeSeedInput = normalized;
+			SeedAtlasConfig.SeedValue value = new SeedAtlasConfig.SeedValue(normalized, seed);
+			SeedAtlasConfig.SeedProfile existing = config.seedProfile(context.key());
+			SeedAtlasConfig.SeedProfile profile = existing == null
+				? new SeedAtlasConfig.SeedProfile(value, null, null, context.label())
+				: new SeedAtlasConfig.SeedProfile(value, existing.nether(), existing.end(), context.label());
+			config.putSeedProfile(context.key(), profile);
+			activeProfile = profile;
 			autoDetectSuppressedContext = null;
 		}
 		saveAndPublish(ChangeReason.SEED);
 		return seed;
+	}
+
+	/**
+	 * Gives the Nether or End its own seed in the active context; the base seed keeps
+	 * generating the other dimensions.
+	 */
+	public static long setDimensionSeed(final Dimension dimension, final String input) {
+		initialize();
+		if (dimension == Dimension.OVERWORLD) {
+			throw new IllegalArgumentException("The Overworld uses the base seed");
+		}
+		String normalized = Objects.requireNonNull(input, "input").trim();
+		long seed = parseSeed(normalized);
+		refreshContext(Minecraft.getInstance());
+		WorldContext context = activeContext;
+		if (context.key().isEmpty()) {
+			throw new IllegalStateException("No active world or server context");
+		}
+
+		synchronized (LOCK) {
+			SeedAtlasConfig.SeedProfile existing = config.seedProfile(context.key());
+			SeedAtlasConfig.SeedProfile profile = (existing == null
+				? new SeedAtlasConfig.SeedProfile(null, null, null, context.label())
+				: existing).withDimension(dimension, new SeedAtlasConfig.SeedValue(normalized, seed));
+			config.putSeedProfile(context.key(), profile);
+			activeProfile = profile;
+		}
+		saveAndPublish(ChangeReason.SEED);
+		return seed;
+	}
+
+	/** Removes the own seed of the Nether or End, which then follows the base seed again. */
+	public static boolean clearDimensionSeed(final Dimension dimension) {
+		initialize();
+		if (dimension == Dimension.OVERWORLD) {
+			throw new IllegalArgumentException("The Overworld uses the base seed");
+		}
+		refreshContext(Minecraft.getInstance());
+		WorldContext context = activeContext;
+		if (context.key().isEmpty()) {
+			return false;
+		}
+
+		synchronized (LOCK) {
+			SeedAtlasConfig.SeedProfile existing = config.seedProfile(context.key());
+			if (existing == null || existing.ownSeed(dimension) == null) {
+				return false;
+			}
+			SeedAtlasConfig.SeedProfile profile = existing.withDimension(dimension, null);
+			if (profile.isEmpty()) {
+				config.removeSeedProfile(context.key());
+				activeProfile = null;
+			} else {
+				config.putSeedProfile(context.key(), profile);
+				activeProfile = profile;
+			}
+		}
+		saveAndPublish(ChangeReason.SEED);
+		return true;
 	}
 
 	public static boolean clearSeed() {
@@ -221,8 +308,7 @@ public final class SeedAtlasClientState {
 		boolean changed;
 		synchronized (LOCK) {
 			changed = config.removeSeedProfile(context.key());
-			activeSeed = OptionalLong.empty();
-			activeSeedInput = null;
+			activeProfile = null;
 			autoDetectSuppressedContext = context.key();
 		}
 		if (changed) {
@@ -404,14 +490,7 @@ public final class SeedAtlasClientState {
 	}
 
 	private static void loadActiveProfileLocked() {
-		if (activeContext.key().isEmpty()) {
-			activeSeed = OptionalLong.empty();
-			activeSeedInput = null;
-			return;
-		}
-		SeedAtlasConfig.SeedProfile profile = config.seedProfile(activeContext.key());
-		activeSeed = profile == null ? OptionalLong.empty() : OptionalLong.of(profile.seed());
-		activeSeedInput = profile == null ? null : profile.input();
+		activeProfile = activeContext.key().isEmpty() ? null : config.seedProfile(activeContext.key());
 	}
 
 	private static void saveAndPublish(final ChangeReason reason) {

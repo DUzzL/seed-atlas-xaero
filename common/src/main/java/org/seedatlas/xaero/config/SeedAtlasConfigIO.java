@@ -116,13 +116,13 @@ final class SeedAtlasConfigIO {
 					continue;
 				}
 				JsonObject profile = entry.getValue().getAsJsonObject();
-				Long seed = longValue(profile, "value");
-				if (seed == null) {
-					continue;
+				JsonObject dimensions = object(profile, "dimensions");
+				SeedAtlasConfig.SeedProfile loaded = new SeedAtlasConfig.SeedProfile(
+					seedValue(profile), seedValue(object(dimensions, "nether")), seedValue(object(dimensions, "end")),
+					string(profile, "label", ""));
+				if (!loaded.isEmpty()) {
+					config.putSeedProfile(entry.getKey(), loaded);
 				}
-				String input = string(profile, "input", Long.toString(seed));
-				String label = string(profile, "label", "");
-				config.putSeedProfile(entry.getKey(), new SeedAtlasConfig.SeedProfile(input, seed, label));
 			}
 			return config;
 		} catch (RuntimeException exception) {
@@ -187,9 +187,15 @@ final class SeedAtlasConfigIO {
 		for (Map.Entry<String, SeedAtlasConfig.SeedProfile> entry : config.profileSnapshot().entrySet()) {
 			SeedAtlasConfig.SeedProfile seed = entry.getValue();
 			JsonObject profile = new JsonObject();
-			profile.addProperty("input", seed.input());
-			profile.addProperty("value", seed.seed());
+			// The base seed keeps its version 6 location, so older releases still read it.
+			addSeedValue(profile, seed.base());
 			profile.addProperty("label", seed.contextLabel());
+			if (seed.nether() != null || seed.end() != null) {
+				JsonObject dimensions = new JsonObject();
+				if (seed.nether() != null) dimensions.add("nether", addSeedValue(new JsonObject(), seed.nether()));
+				if (seed.end() != null) dimensions.add("end", addSeedValue(new JsonObject(), seed.end()));
+				profile.add("dimensions", dimensions);
+			}
 			profiles.add(entry.getKey(), profile);
 		}
 		root.add("seeds", profiles);
@@ -232,6 +238,20 @@ final class SeedAtlasConfigIO {
 		} catch (NumberFormatException exception) {
 			return fallback;
 		}
+	}
+
+	/** Reads {@code {"input": ..., "value": ...}}; null when no numeric value is stored. */
+	private static SeedAtlasConfig.SeedValue seedValue(final JsonObject object) {
+		Long seed = longValue(object, "value");
+		return seed == null ? null : new SeedAtlasConfig.SeedValue(string(object, "input", Long.toString(seed)), seed);
+	}
+
+	private static JsonObject addSeedValue(final JsonObject object, final SeedAtlasConfig.SeedValue value) {
+		if (value != null) {
+			object.addProperty("input", value.input());
+			object.addProperty("value", value.seed());
+		}
+		return object;
 	}
 
 	private static Long longValue(final JsonObject object, final String key) {

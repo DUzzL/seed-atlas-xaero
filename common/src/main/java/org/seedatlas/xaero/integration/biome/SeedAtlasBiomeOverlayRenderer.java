@@ -231,7 +231,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
             return;
         }
         Dimension dimension = SeedAtlasXaeroIntegration.nativeDimension(level);
-        OptionalLong seed = SeedAtlasClientState.activeSeed();
+        OptionalLong seed = dimension == null ? OptionalLong.empty() : SeedAtlasClientState.activeSeed(dimension);
         if (dimension == null || seed.isEmpty()) {
             return;
         }
@@ -308,7 +308,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         }
         ResourceKey<Level> level = minecraft.level.dimension();
         Dimension dimension = SeedAtlasXaeroIntegration.nativeDimension(level);
-        OptionalLong seed = SeedAtlasClientState.activeSeed();
+        OptionalLong seed = dimension == null ? OptionalLong.empty() : SeedAtlasClientState.activeSeed(dimension);
         if (dimension == null || seed.isEmpty()) {
             return;
         }
@@ -383,7 +383,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         }
         String name = this.biomeNames.get(id);
         if (name == null) {
-            name = SeedAtlasXaeroIntegration.withSession(session -> session.biomeName(id));
+            name = SeedAtlasXaeroIntegration.withAnySession(session -> session.biomeName(id));
             if (name == null) {
                 return null;
             }
@@ -392,7 +392,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         }
         Integer color = this.biomeColors.get(id);
         if (color == null) {
-            color = SeedAtlasXaeroIntegration.withSession(session -> session.biomeColor(id));
+            color = SeedAtlasXaeroIntegration.withAnySession(session -> session.biomeColor(id));
             if (color == null) {
                 color = 0;
             }
@@ -961,11 +961,11 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     }
 
     private static GenerationSignature currentGenerationSignature() {
-        OptionalLong seed = SeedAtlasClientState.activeSeed();
         var config = SeedAtlasClientState.config();
         return new GenerationSignature(
-            seed.isPresent(),
-            seed.orElse(0L),
+            SeedAtlasClientState.activeSeed(Dimension.OVERWORLD),
+            SeedAtlasClientState.activeSeed(Dimension.NETHER),
+            SeedAtlasClientState.activeSeed(Dimension.END),
             config.largeBiomes(),
             config.overworldY(),
             config.netherY(),
@@ -1211,7 +1211,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                     if (!isCurrent()) return;
                 }
                 boolean hasSurface = surface != null;
-                BiomeRegion region = SeedAtlasXaeroIntegration.withSession(session -> {
+                BiomeRegion region = SeedAtlasXaeroIntegration.withSession(this.key.seed, this.key.largeBiomes, session -> {
                     BiomeRegion biomes = session.biomeArea(
                         this.key.dimension,
                         this.key.originBlockX,
@@ -1333,7 +1333,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 int id = raw & 0xffff;
                 if (id < names.length && names[id] == null) {
                     names[id] = SeedAtlasBiomeOverlayRenderer.this.biomeNames.computeIfAbsent(id,
-                        value -> SeedAtlasXaeroIntegration.withSession(session -> session.biomeName(value)));
+                        value -> SeedAtlasXaeroIntegration.withAnySession(session -> session.biomeName(value)));
                 }
             }
             boolean hasHeights = heights != null && heights.length == hw * hw;
@@ -1374,7 +1374,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 && !SeedAtlasBiomeOverlayRenderer.this.viewportDesired.contains(this.key)) {
                 return false;
             }
-            OptionalLong activeSeed = SeedAtlasClientState.activeSeed();
+            OptionalLong activeSeed = SeedAtlasClientState.activeSeed(this.key.dimension);
             return activeSeed.isPresent()
                 && activeSeed.getAsLong() == this.key.seed
                 && SeedAtlasClientState.config().largeBiomes() == this.key.largeBiomes
@@ -1689,8 +1689,9 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     }
 
     private record GenerationSignature(
-        boolean hasSeed,
-        long seed,
+        OptionalLong overworldSeed,
+        OptionalLong netherSeed,
+        OptionalLong endSeed,
         boolean largeBiomes,
         int overworldY,
         int netherY,
