@@ -1,6 +1,6 @@
 # Seed Atlas for Xaero's World Map
 
-<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/85zehFZezjs" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+[![Watch the Seed Atlas showcase on YouTube](https://i.ytimg.com/vi/85zehFZezjs/maxresdefault.jpg)](https://www.youtube.com/watch?v=85zehFZezjs)
 
 A client-side Fabric mod that renders [Seed Atlas](https://github.com/DUzzL/Seed-Atlas)
 biomes and structure markers in the fullscreen Xaero's World Map.
