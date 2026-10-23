@@ -15,7 +15,7 @@ Git history, build caches, logs and showcase media were excluded from the source
 | NeoForge | 26.1.2.122 |
 | Xaero World Map / XaeroLib | 1.47.1 / 1.8.3 |
 
-Artifacts include `mc26.1.2` in their version to distinguish them from the original build.
+Versions and JAR filenames follow `2.0.0-mc<Minecraft version>-<loader>`; the full version is embedded in loader metadata.
 
 ## Adaptations
 
