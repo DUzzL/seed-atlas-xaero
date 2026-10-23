@@ -44,12 +44,6 @@ public final class SeedAtlasOpacitySlider extends AbstractSliderButton {
         return handled;
     }
 
-    public void refreshFromConfig() {
-        this.value = Math.clamp(SeedAtlasClientState.config().opacity(), 0, 255) / 255.0;
-        this.dirty = false;
-        updateMessage();
-    }
-
     private void commitValue() {
         if (!this.dirty) {
             return;

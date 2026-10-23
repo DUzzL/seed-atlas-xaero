@@ -1,11 +1,9 @@
 package org.seedatlas.xaero.gui;
 
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
-import java.util.Set;
+import java.util.function.Supplier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -21,29 +19,23 @@ import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.integration.marker.NearestFinder;
 import org.seedatlas.xaero.nativeapi.BiomeSample;
 
-/** Multi-select biome/structure picker (same lists as the settings pages); opens the map at the nearest. */
-public final class NearestScreen extends Screen {
+/** Biome/structure list (same rows as the settings pages) whose buttons open the map at the nearest one. */
+public final class NearestScreen extends SeedAtlasScreen {
 	private static final int FOOTER_HEIGHT = 38;
 	// Remembered for the session only.
 	private static MapNavigator.WaypointMode waypointMode = MapNavigator.WaypointMode.TEMPORARY;
 	private static boolean skipCompleted = true;
 
-	private final Screen parent;
 	private final boolean biomeMode;
-	private final Set<Integer> selectedBiomes = new HashSet<>();
-	private final Set<MarkerType> selectedTypes = new HashSet<>();
-	private List<BiomeSample> biomes = List.of();
 	private ResourceKey<Level> level;
 	private int px;
 	private int pz;
 	private boolean busy;
 	private boolean noSeed;
-	private Button confirm;
 	private Component status = Component.empty();
 
 	public NearestScreen(final Screen parent, final boolean biomeMode) {
-		super(Component.translatable(biomeMode ? "screen.seedatlas_xaero.go_biome" : "screen.seedatlas_xaero.go_structure"));
-		this.parent = parent;
+		super(Component.translatable(biomeMode ? "screen.seedatlas_xaero.go_biome" : "screen.seedatlas_xaero.go_structure"), parent);
 		this.biomeMode = biomeMode;
 	}
 
@@ -77,14 +69,15 @@ public final class NearestScreen extends Screen {
 			}).bounds(left + half + 6, 38, listWidth - half - 6, 20).build());
 		}
 
+		Component find = Component.translatable("options.seedatlas_xaero.nearest_find");
 		List<BiomeSample> available = SeedAtlasXaeroIntegration.availableBiomes();
 		this.noSeed = available.isEmpty();
 		if (!this.noSeed && this.biomeMode) {
-			this.biomes = available.stream()
+			List<BiomeSample> biomes = available.stream()
 				.sorted(Comparator.comparing(b -> SeedAtlasXaeroIntegration.biomeDisplayName(b.name()).getString()))
 				.toList();
-			BiomeToggleList list = new BiomeToggleList(this.minecraft, left, top, listWidth, listHeight, this.biomes, this::refresh);
-			list.useSelection(this.selectedBiomes);
+			BiomeToggleList list = new BiomeToggleList(this.minecraft, left, top, listWidth, listHeight, biomes, () -> { });
+			list.useAction(find, () -> !this.busy, this::findBiome);
 			EditBox search = new EditBox(this.font, left, 64, listWidth, 20, Component.translatable("options.seedatlas_xaero.biome_search"));
 			search.setHint(Component.translatable("options.seedatlas_xaero.biome_search"));
 			search.setResponder(list::setFilter);
@@ -94,7 +87,7 @@ public final class NearestScreen extends Screen {
 			List<MarkerType> types = MarkerType.all().stream()
 				.filter(t -> NearestFinder.appliesTo(t, this.level)).toList();
 			MarkerToggleList list = new MarkerToggleList(this.minecraft, left, top, listWidth, listHeight, types);
-			list.useSelection(this.selectedTypes, this::refresh);
+			list.useAction(find, () -> !this.busy, this::findStructure);
 			EditBox search = new EditBox(this.font, left, 64, listWidth, 20, Component.translatable("options.seedatlas_xaero.structure_search"));
 			search.setHint(Component.translatable("options.seedatlas_xaero.structure_search"));
 			search.setResponder(list::setFilter);
@@ -102,20 +95,9 @@ public final class NearestScreen extends Screen {
 			this.addRenderableWidget(list);
 		}
 
-		this.confirm = this.addRenderableWidget(Button.builder(Component.empty(), button -> start())
-			.bounds((this.width - 204) / 2, Math.max(0, this.height - 28), 100, 20).build());
+		int doneWidth = Math.min(200, Math.max(120, this.width - 24));
 		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
-			.bounds((this.width - 204) / 2 + 104, Math.max(0, this.height - 28), 100, 20).build());
-		refresh();
-	}
-
-	private int selectedCount() {
-		return this.biomeMode ? this.selectedBiomes.size() : this.selectedTypes.size();
-	}
-
-	private void refresh() {
-		this.confirm.setMessage(Component.translatable("options.seedatlas_xaero.nearest_confirm", selectedCount()));
-		this.confirm.active = selectedCount() > 0 && !this.busy;
+			.bounds((this.width - doneWidth) / 2, Math.max(0, this.height - 28), doneWidth, 20).build());
 	}
 
 	private static Component waypointMessage() {
@@ -128,57 +110,47 @@ public final class NearestScreen extends Screen {
 			SeedAtlasSettingsScreen.toggleValue(skipCompleted));
 	}
 
-	private record Hit(String name, NearestFinder.Result result) { }
+	private void findBiome(final BiomeSample biome) {
+		ResourceKey<Level> level = this.level;
+		int x = this.px;
+		int z = this.pz;
+		search(SeedAtlasXaeroIntegration.biomeDisplayName(biome.name()).getString(),
+			() -> NearestFinder.biome(biome.id(), level, x, z));
+	}
 
-	private void start() {
-		if (this.busy || selectedCount() == 0) return;
-		this.busy = true;
-		this.status = Component.translatable("message.seedatlas_xaero.nearest_searching");
-		refresh();
-		Set<Integer> wantedBiomes = Set.copyOf(this.selectedBiomes);
-		List<MarkerType> wantedTypes = List.copyOf(this.selectedTypes);
-		List<BiomeSample> known = this.biomes;
+	private void findStructure(final MarkerType type) {
+		ResourceKey<Level> level = this.level;
+		int x = this.px;
+		int z = this.pz;
 		boolean skip = skipCompleted;
+		search(type.displayName().getString(), () -> NearestFinder.structure(type, level, x, z, skip));
+	}
+
+	private void search(final String name, final Supplier<NearestFinder.Result> finder) {
+		if (this.busy) return;
+		this.busy = true;
+		this.status = Component.translatable("message.seedatlas_xaero.nearest_searching", name);
 		Minecraft mc = this.minecraft;
 		Thread thread = new Thread(() -> {
-			Hit hit = null;
+			NearestFinder.Result result = null;
 			try {
-				if (this.biomeMode) {
-					var r = NearestFinder.biome(wantedBiomes, this.level, this.px, this.pz);
-					if (r != null) {
-						String name = known.stream().filter(b -> b.id() == r.id()).findFirst()
-							.map(b -> SeedAtlasXaeroIntegration.biomeDisplayName(b.name()).getString()).orElse("Biome");
-						hit = new Hit(name, r);
-					}
-				} else {
-					// Structure scans are independent, so run them concurrently.
-					hit = wantedTypes.parallelStream().map(t -> {
-						try {
-							var r = NearestFinder.structure(t, this.level, this.px, this.pz, skip);
-							return r == null ? null : new Hit(t.displayName().getString(), r);
-						} catch (RuntimeException | LinkageError ignored) {
-							return null; // One failing type must not hide the others.
-						}
-					}).filter(Objects::nonNull)
-						.min(Comparator.comparingInt(h -> h.result().distance())).orElse(null);
-				}
+				result = finder.get();
 			} catch (RuntimeException | LinkageError ignored) {
 				// Reported as "not found" below.
 			}
-			Hit found = hit;
-			mc.execute(() -> finish(found));
+			NearestFinder.Result found = result;
+			mc.execute(() -> finish(name, found));
 		}, "seedatlas-nearest");
 		thread.setDaemon(true);
 		thread.start();
 	}
 
-	private void finish(final Hit hit) {
+	private void finish(final String name, final NearestFinder.Result result) {
 		this.busy = false;
 		if (this.minecraft.gui.screen() != this) return;
-		refresh();
-		if (hit == null) {
-			this.status = Component.translatable("message.seedatlas_xaero.nearest_none");
-		} else if (!MapNavigator.open(hit.result().x(), hit.result().z(), hit.name(), waypointMode)) {
+		if (result == null) {
+			this.status = Component.translatable("message.seedatlas_xaero.nearest_none", name);
+		} else if (!MapNavigator.open(result.x(), result.z(), name, waypointMode)) {
 			this.status = Component.translatable("message.seedatlas_xaero.nearest_map");
 		}
 	}

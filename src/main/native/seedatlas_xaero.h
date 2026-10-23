@@ -42,7 +42,9 @@ enum sax_capability {
     SAX_CAP_END_SHIPS = 1u << 6,
     SAX_CAP_BIOME_SAMPLING = 1u << 7,
     SAX_CAP_BIOME_AREAS = 1u << 8,
-    SAX_CAP_HEIGHTS = 1u << 9
+    SAX_CAP_HEIGHTS = 1u << 9,
+    SAX_CAP_NETHER_FLOOR = 1u << 10,
+    SAX_CAP_NETHER_CARVING = 1u << 11
 };
 
 enum sax_dimension {
@@ -108,7 +110,7 @@ enum sax_result_flags {
 };
 
 enum {
-    SAX_ABI_VERSION = 5,
+    SAX_ABI_VERSION = 6,
     SAX_CHUNK_SAMPLE_COUNT = 16 * 16,
     SAX_MAX_BIOME_AREA_SAMPLES = 4 * 1024 * 1024,
     SAX_RESULT_STRIDE = 6,
@@ -180,7 +182,10 @@ SAX_API int32_t sax_biome_area_sampled(
  * structures are not modelled and mountains are smoothed. Each entry is the
  * estimate at the centre of a sample_step x sample_step block cell; steps
  * below 4 interpolate between climate cells. Origins need no alignment.
- * Only the Overworld is supported (SAX_ERR_UNSUPPORTED otherwise).
+ * The End returns the engine's density-based island heights in blocks (0 is
+ * void) for steps 1..8 on step-aligned origins (SAX_ERR_UNSUPPORTED above 8,
+ * SAX_ERR_ARGUMENT if unaligned). The Nether returns SAX_ERR_UNSUPPORTED here;
+ * use sax_nether_floor_area_sampled.
  */
 SAX_API int32_t sax_height_area_sampled(
     const sax_context *context, int32_t dimension,
@@ -188,6 +193,28 @@ SAX_API int32_t sax_height_area_sampled(
     int32_t sample_step, int32_t sample_width, int32_t sample_height,
     float *out_heights, int32_t output_capacity);
 
+/*
+ * Vanilla Nether terrain on the noise-router final_density: the cave-mode
+ * surface at layer y (clamped to 1..127). Pass 127 for Xaero's Full cave mode,
+ * which starts at the roof, NOT the biome sampling Y. It skips any
+ * rock at y, then returns the first solid block below the open space (0 when
+ * there is none). A value below 31 is a seabed under the lava sea. Steps 1..4
+ * interpolate noise cells and need no alignment; steps 8 and 16 sample the
+ * nearest noise cell. Larger steps return SAX_ERR_UNSUPPORTED.
+ */
+SAX_API int32_t sax_nether_floor_area_sampled(
+    const sax_context *context, int32_t origin_block_x, int32_t origin_block_z,
+    int32_t y, int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    float *out_heights, int32_t output_capacity);
+
+/* Additive ABI 6 capability: two uint64 words per sample, bit y marks carved air.
+ * The mask uses the same sample centres/order as the floor output. Capacities
+ * count words and float samples respectively; neither buffer is retained. */
+SAX_API int32_t sax_nether_floor_area_carved_sampled(
+    const sax_context *context, int32_t origin_block_x, int32_t origin_block_z,
+    int32_t y, int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    const uint64_t *carved, int32_t carved_capacity,
+    float *out_heights, int32_t output_capacity);
 /* Returns required bytes including NUL; 0 means the id has no known name. */
 SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity);
 SAX_API uint32_t sax_biome_color(int32_t biome_id);

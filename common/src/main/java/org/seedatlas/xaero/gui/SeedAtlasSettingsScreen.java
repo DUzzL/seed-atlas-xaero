@@ -1,6 +1,6 @@
 package org.seedatlas.xaero.gui;
 
-import java.util.OptionalLong;
+import java.util.Locale;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractSliderButton;
@@ -13,20 +13,18 @@ import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
-import xaero.map.gui.GuiMap;
+import org.seedatlas.xaero.nativeapi.Dimension;
 
 /** Compact main settings screen, visually kept close to Xaero's option menus. */
-public final class SeedAtlasSettingsScreen extends Screen {
+public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 	private static final Component TITLE = Component.translatable("screen.seedatlas_xaero.settings");
-	private final Screen parent;
 	private OpacitySlider opacity;
 	private EditBox overworldY;
 	private EditBox netherY;
 	private EditBox endY;
 
 	public SeedAtlasSettingsScreen(final Screen parent) {
-		super(TITLE);
-		this.parent = parent;
+		super(TITLE, parent);
 	}
 
 	@Override
@@ -51,8 +49,14 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		}).bounds(left + halfWidth + gap, 34, halfWidth, 20).build();
 		this.addRenderableWidget(worldType);
 
-		this.opacity = new OpacitySlider(left, 59, contentWidth, config.opacity());
+		this.opacity = new OpacitySlider(left, 59, halfWidth, config.opacity());
 		this.addRenderableWidget(this.opacity);
+		this.addRenderableWidget(Button.builder(overlayMessage(config.overlayExplored()), button -> {
+			boolean enabled = !SeedAtlasClientState.config().overlayExplored();
+			SeedAtlasClientState.setOverlayExplored(enabled);
+			button.setMessage(overlayMessage(enabled));
+		}).bounds(left + halfWidth + gap, 59, halfWidth, 20)
+			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.overlay_explored"))).build());
 
 		int fieldGap = 6;
 		int fieldWidth = (contentWidth - fieldGap * 2) / 3;
@@ -142,11 +146,7 @@ public final class SeedAtlasSettingsScreen extends Screen {
 			0xFFA0A0A0
 		);
 
-		OptionalLong seed = SeedAtlasClientState.activeSeed();
-		Component status = seed.isPresent()
-			? Component.translatable("screen.seedatlas_xaero.active_seed", seed.getAsLong())
-			: Component.translatable("screen.seedatlas_xaero.no_seed");
-		graphics.centeredText(this.font, status, this.width / 2, this.height - 42, 0xFFA0A0A0);
+		graphics.centeredText(this.font, seedStatus(), this.width / 2, this.height - 42, 0xFFA0A0A0);
 	}
 
 	@Override
@@ -193,8 +193,32 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		);
 	}
 
+	/** "Active seed: X", followed by the Nether's and End's own seeds when they have one. */
+	private static Component seedStatus() {
+		SeedAtlasConfig.SeedProfile profile = SeedAtlasClientState.activeProfile().orElse(null);
+		if (profile == null) {
+			return Component.translatable("screen.seedatlas_xaero.no_seed");
+		}
+		var status = (profile.base() == null
+			? Component.translatable("screen.seedatlas_xaero.no_base_seed")
+			: Component.translatable("screen.seedatlas_xaero.active_seed", profile.base().seed())).copy();
+		for (Dimension dimension : new Dimension[]{Dimension.NETHER, Dimension.END}) {
+			SeedAtlasConfig.SeedValue own = profile.ownSeed(dimension);
+			if (own != null) {
+				status.append(" · ").append(Component.translatable("screen.seedatlas_xaero.dimension_seed",
+					Component.translatable("dimension.seedatlas_xaero." + dimension.name().toLowerCase(Locale.ROOT)),
+					own.seed()));
+			}
+		}
+		return status;
+	}
+
 	private static Component terrainStyleMessage(final boolean enabled) {
 		return Component.translatable("options.seedatlas_xaero.terrain_style", toggleValue(enabled));
+	}
+
+	private static Component overlayMessage(final boolean enabled) {
+		return Component.translatable("options.seedatlas_xaero.overlay_explored", toggleValue(enabled));
 	}
 
 	private static Component structuresMessage(final boolean enabled) {

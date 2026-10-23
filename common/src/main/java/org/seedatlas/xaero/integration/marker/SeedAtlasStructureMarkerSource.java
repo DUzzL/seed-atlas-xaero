@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -94,7 +93,7 @@ final class SeedAtlasStructureMarkerSource {
             return;
         }
         Dimension dimension = SeedAtlasXaeroIntegration.nativeDimension(level);
-        OptionalLong seed = SeedAtlasClientState.activeSeed();
+        OptionalLong seed = dimension == null ? OptionalLong.empty() : SeedAtlasClientState.activeSeed(dimension);
         if (dimension == null || seed.isEmpty()) {
             clear(context);
             return;
@@ -292,7 +291,7 @@ final class SeedAtlasStructureMarkerSource {
             return List.of();
         }
         try {
-            List<SeedAtlasStructureMarker> result = SeedAtlasXaeroIntegration.withSession(
+            List<SeedAtlasStructureMarker> result = SeedAtlasXaeroIntegration.withSession(request.seed, request.largeBiomes,
                 session -> scanWithSession(session, request.level, request.dimension, box, marker));
             if (!current.getAsBoolean() || result == null) {
                 return List.of();

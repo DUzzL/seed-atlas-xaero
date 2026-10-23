@@ -7,7 +7,8 @@ import xaero.map.gui.GuiMap;
 
 /** Opens Xaero's full map; GuiMapMixin then centres it on the pending target and adds the waypoint. */
 public final class MapNavigator {
-    public enum WaypointMode { OFF, TEMPORARY, ON }
+    /** Every jump leaves a waypoint: a temporary one, or a permanent one that starts shown or hidden. */
+    public enum WaypointMode { TEMPORARY, ENABLED, DISABLED }
 
     public record Target(int x, int z, String name, WaypointMode mode) { }
 
@@ -23,7 +24,7 @@ public final class MapNavigator {
         if (session == null || !session.isUsable() || mc.getCameraEntity() == null) return false;
         Target target = new Target(x, z, name, mode);
         pendingCamera = target;
-        pendingWaypoint = mode == WaypointMode.OFF ? null : target;
+        pendingWaypoint = target;
         waypointTries = 0;
         SeedAtlasXaeroIntegration.setHeavyWorkPaused(false);
         mc.gui.setScreen(new GuiMap(null, null, session.getMapProcessor(), mc.getCameraEntity()));
@@ -45,7 +46,7 @@ public final class MapNavigator {
         Target target = pendingWaypoint;
         if (target == null) return;
         if (SeedAtlasWaypointBridge.createNamed(target.x(), target.z(), target.name(),
-            target.mode() == WaypointMode.TEMPORARY) || ++waypointTries > 40) {
+            target.mode() == WaypointMode.TEMPORARY, target.mode() == WaypointMode.DISABLED) || ++waypointTries > 40) {
             pendingWaypoint = null;
         }
     }

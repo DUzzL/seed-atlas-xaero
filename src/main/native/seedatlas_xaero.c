@@ -21,6 +21,8 @@ struct sax_context {
     uint32_t generator_flags;
     uint64_t seed;
     Generator biome_generators[3];
+    SurfaceNoise end_height_noise; /* read-only after sax_create */
+    SurfaceNoise nether_noise; /* vanilla nether old_blended_noise */
     uint32_t biome_argb[256];
 };
 
@@ -163,12 +165,13 @@ SAX_API uint32_t sax_capabilities(void)
     return SAX_CAP_BIOMES | SAX_CAP_STRUCTURES | SAX_CAP_STRONGHOLDS |
            SAX_CAP_SPAWN | SAX_CAP_SLIME | SAX_CAP_ORE_VEINS |
            SAX_CAP_END_SHIPS | SAX_CAP_BIOME_SAMPLING |
-           SAX_CAP_BIOME_AREAS | SAX_CAP_HEIGHTS;
+           SAX_CAP_BIOME_AREAS | SAX_CAP_HEIGHTS |
+           SAX_CAP_NETHER_FLOOR | SAX_CAP_NETHER_CARVING;
 }
 
 SAX_API int32_t sax_engine_version(char *out, int32_t capacity)
 {
-    return copy_string("seedatlas-engine MC 26.3 / ABI 5", out, capacity);
+    return copy_string("seedatlas-engine MC 26.3 / ABI 6", out, capacity);
 }
 
 SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags)
@@ -197,6 +200,14 @@ SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags)
                    context->generator_flags);
     applySeed(&context->biome_generators[2], SAX_DIM_END,
               context->seed);
+    initSurfaceNoise(&context->end_height_noise, DIM_END, context->seed);
+    /* 26.3 RandomState: legacy terrain noise uses the world seed directly. */
+    initSurfaceNoise(&context->nether_noise, DIM_END, context->seed);
+    /* noise_settings/nether: xz 1 / y 3 per cell, factors 80 and 60. */
+    context->nether_noise.xzScale = 1.0;
+    context->nether_noise.yScale = 3.0;
+    context->nether_noise.xzFactor = 80;
+    context->nether_noise.yFactor = 60;
     initBiomeColors(colors);
     for (i = 0; i < 256; ++i)
         context->biome_argb[i] = color_from_table(colors, i);
@@ -515,7 +526,7 @@ SAX_API int32_t sax_height_area_sampled(
         sample_width <= 0 || sample_height <= 0 || output_capacity < 0 ||
         !context_valid(context) || !dimension_valid(dimension))
         return SAX_ERR_ARGUMENT;
-    if (dimension != SAX_DIM_OVERWORLD)
+    if (dimension == SAX_DIM_NETHER)
         return SAX_ERR_UNSUPPORTED;
     sample_count = (int64_t) sample_width * sample_height;
     if (sample_count > SAX_MAX_BIOME_AREA_SAMPLES)
@@ -526,6 +537,21 @@ SAX_API int32_t sax_height_area_sampled(
     last_z = (int64_t) origin_block_z + (int64_t) sample_height * sample_step - 1;
     if (last_x > INT32_MAX || last_z > INT32_MAX)
         return SAX_ERR_RANGE_TOO_LARGE;
+    if (dimension == SAX_DIM_END) {
+        /* Exact End density terrain from the engine; it only supports 1..8
+           block samples on step-aligned origins. 0 means void. */
+        if (sample_step > 8)
+            return SAX_ERR_UNSUPPORTED;
+        if (origin_block_x % sample_step != 0 ||
+            origin_block_z % sample_step != 0)
+            return SAX_ERR_ARGUMENT;
+        if (mapEndSurfaceHeight(out_heights,
+                &context->biome_generators[2].en, &context->end_height_noise,
+                origin_block_x / sample_step, origin_block_z / sample_step,
+                sample_width, sample_height, sample_step, 0) != 0)
+            return SAX_ERR_GENERATION;
+        return SAX_OK;
+    }
     bn = &context->biome_generators[0].bn;
 
     if (sample_step >= 4) {
@@ -581,6 +607,156 @@ SAX_API int32_t sax_height_area_sampled(
     }
 }
 
+/* Vanilla noise_settings/nether final_density at a noise-cell corner:
+   0.64 * (2.5 + ymul * (-2.5 + 0.9375 + yhigh * (base - 0.9375))), where
+   base is old_blended_noise (the engine value divided by 128). Solid when > 0. */
+static double nether_density(double base, int y)
+{
+    double ymul = (y + 8) / 32.0;
+    double yhigh = (128 - y) / 24.0;
+    ymul = ymul < 0.0 ? 0.0 : (ymul > 1.0 ? 1.0 : ymul);
+    yhigh = yhigh < 0.0 ? 0.0 : (yhigh > 1.0 ? 1.0 : yhigh);
+    return 0.64 * (2.5 + ymul * (-2.5 + 0.9375 + yhigh * (base - 0.9375)));
+}
+
+/* Densities at y = 0, 8, .. 8*cells for the noise column at cell (cx, cz). */
+static void nether_column(const SurfaceNoise *sn, int32_t cx, int32_t cz,
+                          int cells, double *out)
+{
+    int j;
+    for (j = 0; j <= cells; ++j)
+        out[j] = nether_density(sampleSurfaceNoise(sn, cx, j, cz) / 128.0, j * 8);
+}
+
+static int nether_solid(const double *v, int y)
+{
+    int j = y >> 3;
+    return v[j] + (v[j + 1] - v[j]) * ((y & 7) / 8.0) > 0.0;
+}
+
+static int nether_occupied(const double *v, int y, const uint64_t *carved)
+{
+    return nether_solid(v, y) && (!carved || !(carved[y >> 6] & (UINT64_C(1) << (y & 63))));
+}
+
+/* Leave the roof, then select the first solid floor, including carver-created pockets. */
+static float nether_scan(const double *v, int ystart, const uint64_t *carved)
+{
+    int y = ystart;
+    while (y > 0 && nether_occupied(v, y, carved))
+        --y;
+    while (y > 0 && !nether_occupied(v, y, carved))
+        --y;
+    return (float) y;
+}
+static int32_t nether_floor_area(
+    const sax_context *context, int32_t origin_block_x, int32_t origin_block_z,
+    int32_t y, int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    const uint64_t *carved, int32_t carved_capacity,
+    float *out_heights, int32_t output_capacity)
+{
+    int64_t sample_count, last_x, last_z;
+    int32_t x, z;
+    int ystart, cells;
+    double off, col[17];
+
+    if (!out_heights || !sample_step_valid(sample_step) ||
+        sample_width <= 0 || sample_height <= 0 || output_capacity < 0 ||
+        !context_valid(context))
+        return SAX_ERR_ARGUMENT;
+    if (sample_step > 16)
+        return SAX_ERR_UNSUPPORTED;
+    sample_count = (int64_t) sample_width * sample_height;
+    if (sample_count > SAX_MAX_BIOME_AREA_SAMPLES)
+        return SAX_ERR_RANGE_TOO_LARGE;
+    if (output_capacity < sample_count)
+        return SAX_ERR_ARGUMENT;
+    if (carved && carved_capacity < sample_count * 2)
+        return SAX_ERR_ARGUMENT;
+    last_x = (int64_t) origin_block_x + (int64_t) sample_width * sample_step;
+    last_z = (int64_t) origin_block_z + (int64_t) sample_height * sample_step;
+    if (last_x > INT32_MAX - 8 || last_z > INT32_MAX - 8 ||
+        origin_block_x < INT32_MIN + 8 || origin_block_z < INT32_MIN + 8)
+        return SAX_ERR_RANGE_TOO_LARGE;
+    ystart = y < 1 ? 1 : (y > 127 ? 127 : y);
+    cells = (ystart >> 3) + 1;
+    off = (sample_step - 1) / 2.0; /* block offset of the sample centre */
+
+    if (sample_step >= 8) {
+        /* One column per sample at the nearest noise cell, no interpolation. */
+        for (z = 0; z < sample_height; ++z) {
+            int64_t bz = (int64_t) origin_block_z + (int64_t) z * sample_step + sample_step / 2;
+            for (x = 0; x < sample_width; ++x) {
+                int64_t bx = (int64_t) origin_block_x + (int64_t) x * sample_step + sample_step / 2;
+                nether_column(&context->nether_noise,
+                    (int32_t) floor_div64(bx + 2, 4), (int32_t) floor_div64(bz + 2, 4),
+                    cells, col);
+                int64_t index = (int64_t) z * sample_width + x;
+                out_heights[index] = nether_scan(col, ystart, carved ? carved + index * 2 : NULL);
+            }
+        }
+        return SAX_OK;
+    }
+    else {
+        int32_t cx0 = (int32_t) floor_div64(origin_block_x, 4);
+        int32_t cz0 = (int32_t) floor_div64(origin_block_z, 4);
+        int32_t cx1 = (int32_t) floor_div64(origin_block_x + (int64_t) (sample_width - 1) * sample_step + (int64_t) ceil(off), 4) + 1;
+        int32_t cz1 = (int32_t) floor_div64(origin_block_z + (int64_t) (sample_height - 1) * sample_step + (int64_t) ceil(off), 4) + 1;
+        int64_t lw = (int64_t) cx1 - cx0 + 1, lh = (int64_t) cz1 - cz0 + 1;
+        int64_t stride = cells + 1, i, j;
+        double *lattice = (double *) malloc((size_t) (lw * lh * stride) * sizeof(*lattice));
+        if (!lattice)
+            return SAX_ERR_ALLOCATION;
+        for (j = 0; j < lh; ++j)
+            for (i = 0; i < lw; ++i)
+                nether_column(&context->nether_noise, (int32_t) (cx0 + i),
+                    (int32_t) (cz0 + j), cells, lattice + (j * lw + i) * stride);
+        for (z = 0; z < sample_height; ++z) {
+            double bz = (double) origin_block_z + (double) z * sample_step + off;
+            int64_t cz = (int64_t) floor(bz / 4.0) - cz0;
+            double tz = bz / 4.0 - floor(bz / 4.0);
+            for (x = 0; x < sample_width; ++x) {
+                double bx = (double) origin_block_x + (double) x * sample_step + off;
+                int64_t cx = (int64_t) floor(bx / 4.0) - cx0;
+                double tx = bx / 4.0 - floor(bx / 4.0);
+                const double *a = lattice + (cz * lw + cx) * stride;
+                const double *b = a + stride;
+                const double *c = lattice + ((cz + 1) * lw + cx) * stride;
+                const double *d = c + stride;
+                int k;
+                for (k = 0; k < stride; ++k) {
+                    double top = a[k] + (b[k] - a[k]) * tx;
+                    double bottom = c[k] + (d[k] - c[k]) * tx;
+                    col[k] = top + (bottom - top) * tz;
+                }
+                int64_t index = (int64_t) z * sample_width + x;
+                out_heights[index] = nether_scan(col, ystart, carved ? carved + index * 2 : NULL);
+            }
+        }
+        free(lattice);
+        return SAX_OK;
+    }
+}
+SAX_API int32_t sax_nether_floor_area_sampled(
+    const sax_context *context, int32_t origin_block_x, int32_t origin_block_z,
+    int32_t y, int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    float *out_heights, int32_t output_capacity)
+{
+    return nether_floor_area(context, origin_block_x, origin_block_z, y, sample_step,
+        sample_width, sample_height, NULL, 0, out_heights, output_capacity);
+}
+
+SAX_API int32_t sax_nether_floor_area_carved_sampled(
+    const sax_context *context, int32_t origin_block_x, int32_t origin_block_z,
+    int32_t y, int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    const uint64_t *carved, int32_t carved_capacity,
+    float *out_heights, int32_t output_capacity)
+{
+    if (!carved || carved_capacity < 0)
+        return SAX_ERR_ARGUMENT;
+    return nether_floor_area(context, origin_block_x, origin_block_z, y, sample_step,
+        sample_width, sample_height, carved, carved_capacity, out_heights, output_capacity);
+}
 SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity)
 {
     if (biome_id < 0 || biome_id >= 256)

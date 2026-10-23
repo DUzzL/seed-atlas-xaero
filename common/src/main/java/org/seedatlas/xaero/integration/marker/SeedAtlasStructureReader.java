@@ -1,6 +1,7 @@
 package org.seedatlas.xaero.integration.marker;
 
 import java.util.ArrayList;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -188,7 +189,7 @@ final class SeedAtlasStructureReader extends ElementReader<
         options.add(new RightClickOption("", options.size(), target) {
             @Override
             public Component getDisplayName() {
-                return Component.literal(marker.displayName()).withStyle(net.minecraft.ChatFormatting.GRAY);
+                return Component.literal(marker.displayName()).withStyle(ChatFormatting.GRAY);
             }
 
             @Override

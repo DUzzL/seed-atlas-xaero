@@ -13,17 +13,15 @@ import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.BiomeSample;
 
 /** Biome focus selector, laid out like MarkerSettingsScreen. */
-public final class BiomeHighlightScreen extends Screen {
+public final class BiomeHighlightScreen extends SeedAtlasScreen {
     private static final int HEADER_HEIGHT = 92;
     private static final int FOOTER_HEIGHT = 38;
-    private final Screen parent;
     private List<BiomeSample> biomes = List.of();
     private Button highlightButton;
     private Button clearButton;
 
     public BiomeHighlightScreen(Screen parent) {
-        super(Component.translatable("screen.seedatlas_xaero.biome_highlights"));
-        this.parent = parent;
+        super(Component.translatable("screen.seedatlas_xaero.biome_highlights"), parent);
     }
 
     @Override

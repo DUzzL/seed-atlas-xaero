@@ -21,12 +21,12 @@ public final class SeedAtlasWaypointBridge {
     private static boolean namedIncompatible;
 
     /**
-     * Named waypoint at the exact coordinates in the current waypoint world. Built reflectively
+     * Named waypoint at the exact coordinates in the current waypoint world, hidden when disabled. Built reflectively
      * because World Map does not expose Minimap's waypoint classes at compile time.
      * Returns false while Minimap is not ready yet, so the caller may retry on a later tick;
      * once the waypoint is in its set it returns true, even if saving it failed, to avoid duplicates.
      */
-    public static boolean createNamed(int x, int z, String name, boolean temporary) {
+    public static boolean createNamed(int x, int z, String name, boolean temporary, boolean disabled) {
         if (namedIncompatible || !available()) return false;
         Object world;
         Class<?> worldClass;
@@ -43,6 +43,7 @@ public final class SeedAtlasWaypointBridge {
                 x, 32767, z, name, name.isEmpty() ? "X" : name.substring(0, 1).toUpperCase(Locale.ROOT),
                 colorClass.getMethod("getRandom").invoke(null), purposeClass.getField("NORMAL").get(null),
                 temporary, false);
+            if (disabled) waypointClass.getMethod("setDisabled", boolean.class).invoke(waypoint, true);
             Object set = worldClass.getMethod("getCurrentWaypointSet").invoke(world);
             if (set == null) return false;
             set.getClass().getMethod("add", waypointClass).invoke(set, waypoint);

@@ -3,6 +3,7 @@ package org.seedatlas.xaero.integration.icon;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import javax.imageio.ImageIO;
 
 /** Geometry and asset regressions that do not need a running Minecraft client. */
@@ -122,7 +123,7 @@ public final class IconLayoutTest {
     }
 
     private static int distinctColours(BufferedImage image) {
-        var colours = new java.util.HashSet<Integer>();
+        var colours = new HashSet<Integer>();
         for (int y = 0; y < image.getHeight(); y++) {
             for (int x = 0; x < image.getWidth(); x++) colours.add(image.getRGB(x, y));
         }
