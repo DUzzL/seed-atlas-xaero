@@ -151,5 +151,8 @@
     "tooltip.seedatlas_xaero.reset_completed_type":  "Reset completed %s",
     "screen.seedatlas_xaero.reset_completed.title":  "Reset completed structures?",
     "screen.seedatlas_xaero.reset_completed.all":  "All %1$s completed structures of %2$s become not completed again.",
-    "screen.seedatlas_xaero.reset_completed.type":  "%1$s completed of type %2$s in %3$s become not completed again."
+    "screen.seedatlas_xaero.reset_completed.type":  "%1$s completed of type %2$s in %3$s become not completed again.",
+    "options.seedatlas_xaero.map_settings":  "Map Settings",
+    "options.seedatlas_xaero.seed_atlas_settings":  "Seed Atlas Settings",
+    "tooltip.seedatlas_xaero.map_settings":  "Xaero's World Map settings"
 }

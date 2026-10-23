@@ -140,6 +140,8 @@ public final class XaeroCompatibility {
             }
             field(map, "shouldResetCameraPos", "Z", false);
             field(map, "attachedCamera", "Z", true);
+            field(map, "settingsButton", "Lnet/minecraft/client/gui/components/Button;", false);
+            method(map, "onSettingsButton", "(Lnet/minecraft/client/gui/components/Button;)V");
             for (String name : List.of("init", "tick", "removed")) {
                 method(map, name, "()V");
             }

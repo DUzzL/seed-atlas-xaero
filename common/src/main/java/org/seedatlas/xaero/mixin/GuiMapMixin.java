@@ -12,7 +12,6 @@ import org.seedatlas.xaero.integration.ExploredTerrainRenderTypes;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.integration.MapNavigator;
 import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
-import org.seedatlas.xaero.integration.gui.SeedAtlasSettingsButton;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -42,11 +41,20 @@ abstract class GuiMapMixin {
     private boolean shouldResetCameraPos;
     @Shadow
     private static boolean attachedCamera;
+    @Shadow
+    private Button settingsButton;
+
+    @Shadow
+    private void onSettingsButton(Button button) {
+        throw new AssertionError();
+    }
 
     @Unique
     private Button seedAtlas$layerButton;
     @Unique
     private Button seedAtlas$settingsButton;
+    @Unique
+    private Button seedAtlas$mapSettingsButton;
     @Unique
     private long seedAtlas$displayedRevision = Long.MIN_VALUE;
 
@@ -114,8 +122,7 @@ abstract class GuiMapMixin {
         SeedAtlasXaeroIntegration.setFullMapActive(true);
 
         // Xaero reserves x=0 in 20px rows along the left edge. Its own buttons
-        // occupy h-40/-60/-100/-120; h-20 is free for SA, and the settings sit
-        // right beside it on the otherwise empty bottom row.
+        // occupy h-40/-60/-100/-120; h-20 is free for SA.
         int x = 0;
         int layerY = Math.max(0, map.height - 20);
         this.seedAtlas$layerButton = new TooltipButton(x, layerY, 20, 20,
@@ -126,10 +133,24 @@ abstract class GuiMapMixin {
         }, () -> new Tooltip(layerButtonText()));
         map.addButton(this.seedAtlas$layerButton);
 
-        Tooltip settingsTooltip = new Tooltip(Component.translatable("screen.seedatlas_xaero.settings"));
-        this.seedAtlas$settingsButton = new SeedAtlasSettingsButton(x + 20, layerY,
-            button -> SeedAtlasClientState.openSettings(map), () -> settingsTooltip);
+        // Xaero's gear in the top left corner becomes two labelled buttons, one per settings menu.
+        var font = Minecraft.getInstance().font;
+        Button xaeroSettings = this.settingsButton;
+        Component mapLabel = Component.translatable("options.seedatlas_xaero.map_settings");
+        Component atlasLabel = Component.translatable("options.seedatlas_xaero.seed_atlas_settings");
+        int mapWidth = font.width(mapLabel) + 12;
+        Tooltip mapTooltip = new Tooltip(Component.translatable("tooltip.seedatlas_xaero.map_settings"));
+        Tooltip atlasTooltip = new Tooltip(Component.translatable("screen.seedatlas_xaero.settings"));
+        this.seedAtlas$mapSettingsButton = new TooltipButton(0, 0, mapWidth, 20, mapLabel,
+            button -> this.onSettingsButton(xaeroSettings), () -> mapTooltip);
+        map.addButton(this.seedAtlas$mapSettingsButton);
+        this.seedAtlas$settingsButton = new TooltipButton(mapWidth + 2, 0, font.width(atlasLabel) + 12, 20, atlasLabel,
+            button -> SeedAtlasClientState.openSettings(map), () -> atlasTooltip);
         map.addButton(this.seedAtlas$settingsButton);
+        if (xaeroSettings != null) {
+            xaeroSettings.visible = false;
+            xaeroSettings.active = false;
+        }
 
         this.seedAtlas$displayedRevision = SeedAtlasClientState.revision();
     }
@@ -152,6 +173,9 @@ abstract class GuiMapMixin {
         }
         if (this.seedAtlas$settingsButton != null) {
             this.seedAtlas$settingsButton.visible = !GuiMap.hiddenUI;
+        }
+        if (this.seedAtlas$mapSettingsButton != null) {
+            this.seedAtlas$mapSettingsButton.visible = !GuiMap.hiddenUI;
         }
         long revision = SeedAtlasClientState.revision();
         if (revision == this.seedAtlas$displayedRevision) {

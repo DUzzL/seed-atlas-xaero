@@ -151,5 +151,8 @@
     "tooltip.seedatlas_xaero.reset_completed_type":  "Erledigte zurücksetzen: %s",
     "screen.seedatlas_xaero.reset_completed.title":  "Erledigte Strukturen zurücksetzen?",
     "screen.seedatlas_xaero.reset_completed.all":  "Alle %1$s erledigten Strukturen von %2$s werden wieder als nicht erledigt markiert.",
-    "screen.seedatlas_xaero.reset_completed.type":  "%1$s erledigte vom Typ %2$s in %3$s werden wieder als nicht erledigt markiert."
+    "screen.seedatlas_xaero.reset_completed.type":  "%1$s erledigte vom Typ %2$s in %3$s werden wieder als nicht erledigt markiert.",
+    "options.seedatlas_xaero.map_settings":  "Karteneinstellungen",
+    "options.seedatlas_xaero.seed_atlas_settings":  "Seed-Atlas-Einstellungen",
+    "tooltip.seedatlas_xaero.map_settings":  "Einstellungen von Xaero's World Map"
 }
