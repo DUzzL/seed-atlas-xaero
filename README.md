@@ -1,10 +1,12 @@
 # Seed Atlas for Xaero's World Map ? Minecraft 26.2
 
-Backport of 0.5.3 for Minecraft **26.2**. See [BACKPORT.md](BACKPORT.md) for build and validation details.
+Version **2.0.0** for Minecraft **26.2**. See [BACKPORT.md](BACKPORT.md) for build and validation details.
 
 A client-side addon that predicts biomes and structures from a world seed and displays them in Xaero's fullscreen World Map.
 
 ## Installation
+
+Release versions use `2.0.0-mc<Minecraft version>-<loader>`, for example `2.0.0-mc26.1.2-fabric`. The same version is embedded in the mod metadata and used in the JAR filename.
 
 Install the Seed Atlas file for your **Minecraft version and mod loader** (Fabric, Forge or NeoForge), together with the matching [Xaero's World Map](https://modrinth.com/mod/xaeros-world-map) and its required dependencies. Fabric also requires Fabric API. See the selected release for compatible versions and requirements.
 
