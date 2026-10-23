@@ -23,6 +23,7 @@ import org.seedatlas.xaero.SeedAtlasXaero;
 import org.seedatlas.xaero.gui.SeedAtlasSettingsScreen;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -114,6 +115,36 @@ public final class SeedAtlasClientState {
 
 	private static OptionalLong seedOf(final SeedAtlasConfig.SeedValue value) {
 		return value == null ? OptionalLong.empty() : OptionalLong.of(value.seed());
+	}
+
+	/** The Minecraft version the active world or server generates with; the running game's by default. */
+	public static GameVersion activeGameVersion() {
+		initialize();
+		return GameVersion.parse(config.gameVersion(activeContext.key())).orElse(GameVersion.NEWEST);
+	}
+
+	/** True when the active context follows the running game's version instead of a chosen one. */
+	public static boolean gameVersionAutomatic() {
+		initialize();
+		return config.gameVersion(activeContext.key()) == null;
+	}
+
+	/**
+	 * Selects the version the active world or server generates with, e.g. a 26.2 server joined from
+	 * 26.3; {@code null} follows the running game again.
+	 */
+	public static void setGameVersion(final GameVersion version) {
+		initialize();
+		refreshContext(Minecraft.getInstance());
+		WorldContext context = activeContext;
+		if (context.key().isEmpty()) {
+			throw new IllegalStateException("No active world or server context");
+		}
+		// An explicit choice stays put when a later mod update moves the automatic version on.
+		String stored = version == null ? null : version.name();
+		if (config.setGameVersion(context.key(), stored)) {
+			saveAndPublish(ChangeReason.WORLD_GENERATION);
+		}
 	}
 
 	public static String currentContextKey() {
@@ -327,9 +358,12 @@ public final class SeedAtlasClientState {
 		}
 	}
 
-	public static void setHideCompletedStructures(boolean hide) {
-		// Read by the marker renderer every frame; no terrain/structure rescan needed.
-		if (config().setHideCompletedStructures(hide)) save();
+	/**
+	 * Read by the marker renderer every frame, so a slider can preview it live; no rescan is
+	 * needed. Pass {@code persist} once the value settles to write the config.
+	 */
+	public static void setCompletedOpacity(int opacity, boolean persist) {
+		if (config().setCompletedOpacity(opacity) && persist) save();
 	}
 
 	/** Marker size is read by the marker renderer every frame, so no rescan is needed. */
@@ -367,6 +401,21 @@ public final class SeedAtlasClientState {
 
 	public static void setStructureCompleted(SeedAtlasConfig.StructureKey key, boolean completed) {
 		if (config().setCompleted(key, completed)) save();
+	}
+
+	/** Completed structures of the active world or server, of one marker type or ({@code null}) all. */
+	public static int completedCount(final MarkerType type) {
+		String world = currentContextKey();
+		return world.isEmpty() ? 0 : config().completedCount(world, type == null ? null : type.id());
+	}
+
+	/** Marks the active world's completed structures of one type or ({@code null}) all as not completed. */
+	public static int resetCompleted(final MarkerType type) {
+		String world = currentContextKey();
+		if (world.isEmpty()) return 0;
+		int removed = config().resetCompleted(world, type == null ? null : type.id());
+		if (removed > 0) save();
+		return removed;
 	}
 
 	public static void setBiomeResolution(final int resolution) {
@@ -426,9 +475,6 @@ public final class SeedAtlasClientState {
 			}
 			return;
 		}
-		// Pause native/GPU work immediately so opening settings never keeps the
-		// map pipeline spinning underneath the menu.
-		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		Minecraft.getInstance().gui.setScreen(new SeedAtlasSettingsScreen(parent));
 	}
 

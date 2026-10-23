@@ -11,9 +11,9 @@ def xaeroOverrideKey = "xaero_world_map_version_${project.name}"
 ext.xaero_world_map_version = providers.gradleProperty(xaeroOverrideKey)
     .orElse(providers.gradleProperty('xaero_world_map_version'))
     .getOrElse(atlasProperties.getProperty(xaeroOverrideKey, atlasProperties.getProperty('xaero_world_map_version')))
-version = mod_version
+version = "${mod_version}-mc${minecraft_version}-${project.name}"
 group = maven_group
-base.archivesName = "seedatlas-xaero-${project.name}"
+base.archivesName = atlasProperties.getProperty('archives_base_name', 'seedatlas-xaero')
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 java.withSourcesJar()
 sourceSets.main.java.srcDir new File(atlasRoot, 'common/src/main/java')

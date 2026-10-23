@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import net.minecraft.resources.ResourceKey;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 
 /** Deterministic unlimited-zoom bounds checks; no Minecraft window or native work. */
 public final class BiomeViewportTest {
@@ -33,8 +34,9 @@ public final class BiomeViewportTest {
             check(!SeedAtlasBiomeOverlayRenderer.shouldRefine(true, false, category, false), "Parents/overscan/background stay cheap previews");
         }
         for (Dimension dimension : Dimension.values()) for (int step : new int[]{1, 4, 16, 64, 1024}) {
-            check(SeedAtlasBiomeOverlayRenderer.needsSurfaceRefinement(dimension, true, false, step)
-                    == (dimension == Dimension.OVERWORLD && step <= 4), "Refinement remains limited to detailed Overworld");
+            int deepest = switch (dimension) { case OVERWORLD -> 4; case NETHER -> 16; case END -> 8; };
+            check(SeedAtlasBiomeOverlayRenderer.needsSurfaceRefinement(dimension, true, false, step) == (step <= deepest),
+                "Terrain is refined after coverage wherever it costs more than biomes: " + dimension + " step " + step);
             check(!SeedAtlasBiomeOverlayRenderer.needsSurfaceRefinement(dimension, false, false, step),
                 "Terrain-off never schedules density refinement");
             check(!SeedAtlasBiomeOverlayRenderer.needsSurfaceRefinement(dimension, true, true, step),
@@ -84,11 +86,11 @@ public final class BiomeViewportTest {
         // An over-budget transition clears old slices and work without disabling the map.
         try {
             // Reproduce the old render-thread exception directly, without enumerating millions of requests.
-            var tileKey = renderer.getClass().getDeclaredMethod("tileKey", long.class, boolean.class,
+            var tileKey = renderer.getClass().getDeclaredMethod("tileKey", long.class, boolean.class, GameVersion.class,
                 Dimension.class, ResourceKey.class, int.class, int.class, int.class, int.class, int.class);
             tileKey.setAccessible(true);
             try {
-                tileKey.invoke(null, 1L, false, Dimension.OVERWORLD, null, 64, 1024, 256, -15360, 0);
+                tileKey.invoke(null, 1L, false, GameVersion.NEWEST, Dimension.OVERWORLD, null, 64, 1024, 256, -15360, 0);
                 throw new AssertionError("Expected the old integer-coordinate failure");
             } catch (InvocationTargetException expected) {
                 check(expected.getCause() instanceof IllegalArgumentException
@@ -111,7 +113,7 @@ public final class BiomeViewportTest {
             var viewConstructor = viewClass.getDeclaredConstructors()[0];
             viewConstructor.setAccessible(true);
             field("currentView", renderer.getClass()).set(renderer, viewConstructor.newInstance(
-                1L, false, Dimension.OVERWORLD, null, 64, 1024, 256,
+                1L, false, GameVersion.NEWEST, Dimension.OVERWORLD, null, 64, 1024, 256,
                 0, 1, 0, 1, 0.0, 0.0, 1.0, 1920, 1080));
             check(!view(renderer, 0, 0, 1e-9, 1920, 1080, 1024, 256), "Extreme view is suspended");
             check(((List<?>)slices.get(context)).isEmpty(), "No stale overlay remains visible");

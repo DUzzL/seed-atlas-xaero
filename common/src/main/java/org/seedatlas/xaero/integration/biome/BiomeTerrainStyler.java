@@ -10,6 +10,15 @@ import java.util.Arrays;
 public final class BiomeTerrainStyler {
     private static final int LIMIT = 256;
     private static final byte WATER = 1, DEEP = 2, LAND = 3;
+    private static final int END_STONE = 0xD9D99A;
+    private static final int END_VOID = 0x1A1A2E;
+    // Engine biome ids of the End.
+    private static final int THE_END = 9;
+    private static final int SMALL_END_ISLANDS = 40;
+    private static final int END_MIDLANDS = 41;
+    private static final int END_HIGHLANDS = 42;
+    private static final int END_BARRENS = 43;
+    private static final long MAIN_ISLAND_RADIUS_SQUARED = 100L * 100L;
     /** Relief strength per biome id (0 = flat). */
     private static final int[] RELIEF = new int[LIMIT];
     private static final byte[] KIND = new byte[LIMIT];
@@ -85,23 +94,63 @@ public final class BiomeTerrainStyler {
     }
 
     /**
-     * End islands: shades the engine's density-based island heights (0 is void, left untouched)
-     * with the same north-west light. {@code heights} is the (size+2)^2 grid with a one-sample halo;
-     * a missing or wrong-sized grid leaves the tile flat. Alpha and biome ids are never changed.
+     * End terrain: density heights determine both the island outline and its surface colour.
+     * Biome boundaries do not describe solid ground, so they must not colour the terrain.
+     * {@code heights} is the (size+2)^2 grid with a one-sample halo; 0 means void.
+     * A missing or wrong-sized grid leaves the tile flat. Alpha and biome ids are never changed.
      */
     public static void applyEnd(int[] argb, short[] ids, int originX, int originZ, int step, int size, float[] heights) {
         int hw = size + 2;
-        if (heights == null || heights.length != hw * hw || argb.length < size * size || ids.length < size * size) return;
+        if (size <= 0 || step <= 0 || heights == null || heights.length != hw * hw
+            || argb.length < size * size || ids.length < size * size) return;
         for (int z = 0; z < size; ++z) {
             for (int x = 0; x < size; ++x) {
                 int i = z * size + x;
-                if ((ids[i] & 0xFFFF) >= LIMIT || heights[(z + 1) * hw + x + 1] <= 0.0F) {
-                    continue; // void and unknown samples keep their colour
+                float h = heights[(z + 1) * hw + x + 1];
+                if ((ids[i] & 0xFFFF) >= LIMIT || !Float.isFinite(h)) continue;
+                int alpha = argb[i] & 0xFF000000;
+                if (h <= 0.0F) {
+                    argb[i] = alpha | END_VOID;
+                    continue;
                 }
-                float slope = (heights[(z + 2) * hw + x + 2] - heights[z * hw + x]) / (2.0F * step);
+                // Void has no surface height: do not turn the drop to zero into a bright/dark rim.
+                float nw = heights[z * hw + x];
+                float se = heights[(z + 2) * hw + x + 2];
+                if (!Float.isFinite(nw) || nw <= 0.0F) nw = h;
+                if (!Float.isFinite(se) || se <= 0.0F) se = h;
+                float slope = (se - nw) / (2.0F * step);
                 int delta = Math.round(Math.max(-40.0F, Math.min(40.0F, slope * 120.0F)));
                 delta += (int) (hash(originX / step + x, originZ / step + z, 0x5EED5L) % 7) - 3; // grain
-                argb[i] = shade(argb[i], delta);
+                argb[i] = shade(alpha | END_STONE, delta);
+            }
+        }
+    }
+
+    /**
+     * End look without density heights: distant views, and the moment before the heights arrive.
+     * Highlands and midlands carry the islands, the other End biomes are mostly void, so the
+     * preview already matches the refined palette instead of flashing raw biome colours.
+     */
+    public static void applyEndPreview(int[] argb, short[] ids, int originX, int originZ, int step, int size) {
+        if (size <= 0 || step <= 0 || argb.length < size * size || ids.length < size * size) return;
+        int centre = step / 2;
+        for (int z = 0; z < size; ++z) {
+            for (int x = 0; x < size; ++x) {
+                int i = z * size + x;
+                int id = ids[i] & 0xFFFF;
+                int alpha = argb[i] & 0xFF000000;
+                int grain = (int) (hash(originX / step + x, originZ / step + z, 0x5EED5L) % 7) - 3;
+                long bx = (long) originX + (long) x * step + centre;
+                long bz = (long) originZ + (long) z * step + centre;
+                argb[i] = switch (id) {
+                    case END_HIGHLANDS -> shade(alpha | END_STONE, grain - 4);
+                    case END_MIDLANDS -> shade(alpha | END_STONE, grain - 16);
+                    // The main island sits inside the central the_end biome, which is otherwise void.
+                    case THE_END -> bx * bx + bz * bz < MAIN_ISLAND_RADIUS_SQUARED
+                        ? shade(alpha | END_STONE, grain - 4) : alpha | END_VOID;
+                    case SMALL_END_ISLANDS, END_BARRENS -> alpha | END_VOID;
+                    default -> argb[i];
+                };
             }
         }
     }

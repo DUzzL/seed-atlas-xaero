@@ -29,7 +29,6 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 
 	@Override
 	protected void init() {
-		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		SeedAtlasConfig config = SeedAtlasClientState.config();
 		int contentWidth = Math.min(340, this.width - 20);
 		int left = (this.width - contentWidth) / 2;
@@ -42,12 +41,11 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 		}).bounds(left, 34, halfWidth, 20).build();
 		this.addRenderableWidget(layer);
 
-		Button worldType = Button.builder(worldTypeMessage(config.largeBiomes()), button -> {
-			boolean large = !SeedAtlasClientState.config().largeBiomes();
-			SeedAtlasClientState.setLargeBiomes(large);
-			button.setMessage(worldTypeMessage(large));
-		}).bounds(left + halfWidth + gap, 34, halfWidth, 20).build();
-		this.addRenderableWidget(worldType);
+		this.addRenderableWidget(Button.builder(worldGenerationMessage(), button -> {
+			this.commitValues();
+			this.minecraft.gui.setScreen(new WorldGenerationScreen(this));
+		}).bounds(left + halfWidth + gap, 34, halfWidth, 20)
+			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.world_generation"))).build());
 
 		this.opacity = new OpacitySlider(left, 59, halfWidth, config.opacity());
 		this.addRenderableWidget(this.opacity);
@@ -84,12 +82,18 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 			this.minecraft.gui.setScreen(new PerformanceSettingsScreen(this));
 		}).bounds(left, 150, halfWidth, 20).build());
 
-		this.addRenderableWidget(Button.builder(terrainStyleMessage(config.terrainStyle()), button -> {
+		boolean terrainAvailable = SeedAtlasClientState.activeGameVersion().hasTerrain();
+		Button terrain = this.addRenderableWidget(Button.builder(terrainAvailable
+			? terrainStyleMessage(config.terrainStyle())
+			: Component.translatable("options.seedatlas_xaero.terrain_style.unavailable"), button -> {
 			boolean enabled = !SeedAtlasClientState.config().terrainStyle();
 			SeedAtlasClientState.setTerrainStyle(enabled);
 			button.setMessage(terrainStyleMessage(enabled));
 		}).bounds(left + halfWidth + gap, 150, halfWidth, 20)
-			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.terrain_style"))).build());
+			.tooltip(Tooltip.create(Component.translatable(terrainAvailable
+				? "tooltip.seedatlas_xaero.terrain_style" : "tooltip.seedatlas_xaero.terrain_style.unavailable"))).build());
+		// Before 1.18 there is no noise-based terrain to predict.
+		terrain.active = terrainAvailable;
 
 		// One row of three: a fourth row would overlap the seed status and Done
 		// button at the smallest GUI height (240), e.g. auto scale on 1440p.
@@ -186,10 +190,13 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 		return Component.translatable("options.seedatlas_xaero.layer", toggleValue(enabled));
 	}
 
-	private static Component worldTypeMessage(final boolean largeBiomes) {
+	/** "World: 26.2, Normal"; the version is the active world's or server's. */
+	private static Component worldGenerationMessage() {
 		return Component.translatable(
-			"options.seedatlas_xaero.world_type",
-			Component.translatable(largeBiomes ? "options.seedatlas_xaero.world_type.large" : "options.seedatlas_xaero.world_type.normal")
+			"options.seedatlas_xaero.world_generation",
+			SeedAtlasClientState.activeGameVersion().label(),
+			Component.translatable(SeedAtlasClientState.config().largeBiomes()
+				? "options.seedatlas_xaero.world_type.large" : "options.seedatlas_xaero.world_type.normal")
 		);
 	}
 

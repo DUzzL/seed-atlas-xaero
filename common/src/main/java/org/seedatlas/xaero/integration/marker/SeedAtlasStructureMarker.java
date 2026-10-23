@@ -14,15 +14,24 @@ public record SeedAtlasStructureMarker(
     ResourceKey<Level> dimension,
     boolean approximate,
     String biomeName,
-    boolean specialLoot
+    boolean specialLoot,
+    boolean copper
 ) {
     public SeedAtlasStructureMarker(MarkerType type, int x, int y, int z,
                                     ResourceKey<Level> dimension, boolean approximate) {
-        this(type, x, y, z, dimension, approximate, null, false);
+        this(type, x, y, z, dimension, approximate, null, false, false);
     }
 
+    public SeedAtlasStructureMarker(MarkerType type, int x, int y, int z, ResourceKey<Level> dimension,
+                                    boolean approximate, String biomeName, boolean specialLoot) {
+        this(type, x, y, z, dimension, approximate, biomeName, specialLoot, false);
+    }
+
+    /** Special-loot camps and copper veins have their own icon. */
     public String textureId() {
-        return type == MarkerType.ABANDONED_CAMP && specialLoot ? "camp_special" : type.id();
+        if (type == MarkerType.ABANDONED_CAMP && specialLoot) return "camp_special";
+        if (type == MarkerType.ORE_VEIN && copper) return "orevein_copper";
+        return type.id();
     }
 
     public Component tooltip() {

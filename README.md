@@ -1,40 +1,31 @@
 # Seed Atlas for Xaero's World Map
 
-A client-side addon that predicts biomes and structures from a world seed and displays them in Xaero's fullscreen World Map.
+[![Watch the Seed Atlas showcase on YouTube](https://i.ytimg.com/vi/85zehFZezjs/maxresdefault.jpg)](https://www.youtube.com/watch?v=85zehFZezjs)
 
-## Installation
+A client-side Fabric mod that renders [Seed Atlas](https://github.com/DUzzL/Seed-Atlas)
+biomes and structure markers in the fullscreen Xaero's World Map.
 
-Install the Seed Atlas file for your **Minecraft version and mod loader** (Fabric, Forge or NeoForge), together with the matching [Xaero's World Map](https://modrinth.com/mod/xaeros-world-map) and its required dependencies. Fabric also requires Fabric API. See the selected release for compatible versions and requirements.
+## Requirements
 
-Newer Xaero's World Map releases work without a Seed Atlas update. If one changes something Seed Atlas relies on, Seed Atlas switches itself off and says so in chat, while Xaero's map keeps working; a Seed Atlas update then restores the layer.
+- Fabric API
+- Xaero's World Map (specific version depending on release)
 
-Seed Atlas is only needed on the client. Native libraries are included for Windows x64, Linux x64, macOS x64 and macOS Apple Silicon.
 
-## Usage
 
-Singleplayer seeds are detected automatically. On multiplayer, set a known seed with `/seedatlas seed <number-or-text>`; it is saved for the current Xaero map/server context.
+## Commands
 
-- `/seedatlas settings` opens the settings.
-- `/seedatlas status` shows the active seed and generation settings.
-- `/seedatlas dimension-seed <nether|end> <seed>` sets a separate seed for the Nether or End, for servers that generate them from another seed; `/seedatlas clear <nether|end>` returns that dimension to the main seed.
-- `/seedatlas clear` removes the saved seeds.
+- `/seedatlas seed <number-or-text>` sets the seed for the current Xaero map.
+- `/seedatlas clear` removes it.
+- `/seedatlas status` shows the active context and generator settings.
+- `/seedatlas settings` opens the settings screen.
+- `/seedatlas dimension-seed <nether|end> <number-or-text>` sets a separate seed for the Nether or End.
+- `/seedatlas clear <nether|end>` removes the separate seed for that dimension and returns it to the main seed.
+- `/seedatlas version <version|auto>` sets the Minecraft version used for world generation; `auto` follows the running game. Use `/seedatlas version` to show the current setting.
 
-Use **SA** on the world map to toggle the layer and **…** to open settings. Settings include structure filters, biome highlighting, opacity and performance controls. Structure context menus let you mark locations as completed and create waypoints when Xaero's Minimap is installed.
+Singleplayer seeds are detected automatically. Multiplayer seeds are stored
+per Xaero map/server context. Only vanilla normal and Large Biomes world
+generation are supported; custom worldgen datapacks and modded dimensions
+are currently not supported.
 
-**Overlay explored** (off by default) also draws the seed map over explored terrain; **Layer opacity** blends the two. Biome focus is always drawn on top.
 
-## Accuracy
-
-Predictions cover vanilla Normal and Large Biomes worlds of the Minecraft version a release is built for. Custom world generation and modded dimensions are not supported. Some structures and spawn positions are approximate, so a marker does not guarantee a structure.
-
-The terrain look shows predicted ground, not explored blocks:
-
-- **Overworld:** close-up views (up to 4 blocks per sample) use vanilla base terrain and aquifers for ground height and water. Grass, leaves and water use each biome's vanilla tint, as on Xaero's map. Surface rules, caves, trees and structures are not generated; forest tree crowns are decorative. A quick preview appears first and is refined in place, which can take a few seconds the first time.
-- **End:** island heights come from the generator density, up to 8 blocks per sample.
-- **Nether:** cave floors and lava seas come from terrain density and vanilla cave carvers, up to 4 blocks per sample. Xaero's Full cave mode scans from below the roof; other modes use the configured Nether Y.
-
-Distant views use coarser samples without fine shading. With unlimited-zoom addons, the biome layer pauses beyond its tile budget and returns when you zoom back in.
-
-[Report an issue](https://github.com/DUzzL/seed-atlas-xaero/issues) with your Minecraft version, loader, mod versions and relevant logs.
-
-Not affiliated with Xaero. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY_NOTICES.md) and [legal notice](LEGAL_NOTICE.md).
+Not affiliated with Xaero

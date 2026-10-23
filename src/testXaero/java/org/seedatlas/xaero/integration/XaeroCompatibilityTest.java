@@ -44,6 +44,14 @@ public final class XaeroCompatibilityTest {
             .forEach(local -> { if (local.name.equals("flooredCameraX")) local.name = "cameraBlockX"; }), "flooredCameraX");
         breaks(installed, "xaero/map/gui/GuiMap", node -> node.fields.removeIf(f -> f.name.equals("attachedCamera")),
             "attachedCamera");
+        breaks(installed, "xaero/map/gui/GuiMap", node -> method(node, "applyZoomLimits").localVariables
+            .forEach(local -> { if (local.name.equals("minScale")) local.name = "minimumScale"; }), "minScale");
+        breaks(installed, "xaero/map/gui/GuiMap", node -> removeRendererCalls(method(node, "extractRenderState")),
+            "explored terrain's render type");
+        breaks(installed, "xaero/map/region/texture/BranchTextureRenderer",
+            node -> removeRendererCalls(method(node, "render")), "branch render type");
+        breaks(installed, "xaero/map/region/BranchLeveledRegion",
+            node -> node.methods.removeIf(m -> m.name.equals("findCacheFile")), "findCacheFile");
         breaks(installed, "xaero/map/MapProcessor", node -> node.methods.removeIf(m -> m.name.equals("getCurrentCaveLayer")),
             "getCurrentCaveLayer");
         breaks(installed, "xaero/map/element/render/ElementRenderer", node -> {
@@ -58,7 +66,16 @@ public final class XaeroCompatibilityTest {
             node -> node.methods.removeIf(m -> m.name.equals("createTempWaypoint"))));
         check(optional.compatible() && optional.warnings().stream().anyMatch(w -> w.contains("createTempWaypoint")),
             "A missing optional waypoint hook only disables that feature: " + optional);
+        ExploredEdgeCachesTest.run();
         System.out.println("Xaero compatibility checks passed (" + report.checked().size() + " classes)");
+    }
+
+    private static void removeRendererCalls(MethodNode method) {
+        for (AbstractInsnNode instruction : method.instructions.toArray()) {
+            if (instruction instanceof MethodInsnNode call && call.name.equals("getRenderer")) {
+                method.instructions.remove(instruction);
+            }
+        }
     }
 
     /** Every compiled Seed Atlas class that references Xaero must be reached by the runtime check. */

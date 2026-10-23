@@ -8,8 +8,10 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalLong;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -18,20 +20,24 @@ import org.seedatlas.xaero.integration.biome.BiomeHighlighter;
 import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
 import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
+import xaero.lib.client.gui.IScreenBase;
 import xaero.map.WorldMapSession;
+import xaero.map.gui.GuiMap;
 
 /** Runtime boundary between Xaero, the adaptive overlay and the native engine. */
 public final class SeedAtlasXaeroIntegration {
     private static final Object NATIVE_LOCK = new Object();
 
     private static volatile boolean fullMapActive;
-    /** True while Seed Atlas settings (or nested screens) cover the world map. */
+    /** True while a Seed Atlas menu covers the world map without drawing it. */
     private static volatile boolean heavyWorkPaused;
     private static final StateRevisionTracker REVISIONS = new StateRevisionTracker();
     private static volatile double observedMapScale = 1.0;
-    private static volatile List<BiomeSample> availableBiomes;
+    /** Biomes of the version they were listed for; versions differ in biomes and their names. */
+    private static volatile Map.Entry<GameVersion, List<BiomeSample>> availableBiomes;
     private static boolean initialized;
     /** One engine context per seed; up to three when every dimension has its own seed. */
     private static final int MAX_SESSIONS = 3;
@@ -107,6 +113,17 @@ public final class SeedAtlasXaeroIntegration {
         }
     }
 
+    /**
+     * Seed Atlas menus opened from the world map draw it behind them, so its layer stays live there,
+     * and changes show at once; a menu without the map behind it pauses the layer instead.
+     */
+    public static void setMapBehindMenu(boolean mapBehind) {
+        if (mapBehind) {
+            setFullMapActive(true);
+        }
+        setHeavyWorkPaused(!mapBehind);
+    }
+
     /** Applies configuration changes without touching Xaero's leaf-region cache. */
     public static void synchronizeRevision() {
         REVISIONS.synchronize(SeedAtlasClientState.revision(), heavyWorkPaused,
@@ -131,9 +148,15 @@ public final class SeedAtlasXaeroIntegration {
             level, cameraX, cameraZ, scale, viewportWidth, viewportHeight);
     }
 
-    /** Map-only maintenance: generates nothing while the map is closed or settings cover it. */
+    /** Map-only maintenance, including the map drawn behind Seed Atlas menus. */
     public static void tickBackground(Minecraft minecraft) {
         synchronizeRevision();
+        Screen screen = minecraft.gui.screen();
+        if (fullMapActive && !(screen instanceof GuiMap)
+            && !(screen instanceof IScreenBase menu && menu.getEscape() instanceof GuiMap)) {
+            // A menu over the map was closed without returning to it.
+            setFullMapActive(false);
+        }
         if (!fullMapActive || heavyWorkPaused) {
             return;
         }
@@ -172,13 +195,14 @@ public final class SeedAtlasXaeroIntegration {
     }
 
     /**
-     * Every biome of the running Minecraft version, sorted by resource name. Requires a native
+     * Every biome of the active world's Minecraft version, sorted by resource name. Requires a native
      * session, so the list is empty while no seed is configured.
      */
     public static List<BiomeSample> availableBiomes() {
-        List<BiomeSample> cached = availableBiomes;
-        if (cached != null) {
-            return cached;
+        GameVersion version = SeedAtlasClientState.activeGameVersion();
+        Map.Entry<GameVersion, List<BiomeSample>> cached = availableBiomes;
+        if (cached != null && cached.getKey().equals(version)) {
+            return cached.getValue();
         }
         List<BiomeSample> found = withAnySession(session -> {
             List<BiomeSample> biomes = new ArrayList<>();
@@ -195,7 +219,7 @@ public final class SeedAtlasXaeroIntegration {
         if (found == null || found.isEmpty()) {
             return List.of();
         }
-        availableBiomes = found;
+        availableBiomes = Map.entry(version, found);
         return found;
     }
 
@@ -205,7 +229,8 @@ public final class SeedAtlasXaeroIntegration {
         if (seed.isEmpty()) {
             return null;
         }
-        return withSession(seed.getAsLong(), SeedAtlasClientState.config().largeBiomes(), operation);
+        return withSession(seed.getAsLong(), SeedAtlasClientState.config().largeBiomes(),
+            SeedAtlasClientState.activeGameVersion(), operation);
     }
 
     /** For seed-independent queries such as biome names and colours. */
@@ -219,10 +244,11 @@ public final class SeedAtlasXaeroIntegration {
     }
 
     /** Runs against the engine for an explicit seed, e.g. the one a cached tile was keyed with. */
-    public static <T> T withSession(long seed, boolean largeBiomes, SessionOperation<T> operation) {
+    public static <T> T withSession(long seed, boolean largeBiomes, GameVersion gameVersion,
+                                    SessionOperation<T> operation) {
         SeedAtlasNative nativeSession;
         synchronized (NATIVE_LOCK) {
-            nativeSession = session(seed, largeBiomes);
+            nativeSession = session(seed, largeBiomes, gameVersion);
             if (nativeSession == null) {
                 return null;
             }
@@ -260,8 +286,8 @@ public final class SeedAtlasXaeroIntegration {
     }
 
     /** Called with NATIVE_LOCK held. */
-    private static SeedAtlasNative session(long seed, boolean largeBiomes) {
-        SessionKey key = new SessionKey(seed, largeBiomes);
+    private static SeedAtlasNative session(long seed, boolean largeBiomes, GameVersion gameVersion) {
+        SessionKey key = new SessionKey(seed, largeBiomes, gameVersion);
         SeedAtlasNative cached = SESSIONS.get(key);
         if (cached != null) {
             return cached;
@@ -269,7 +295,7 @@ public final class SeedAtlasXaeroIntegration {
         SeedAtlasNative opened;
         try {
             WorldType worldType = largeBiomes ? WorldType.LARGE_BIOMES : WorldType.NORMAL;
-            opened = SeedAtlasNative.open(seed, worldType);
+            opened = SeedAtlasNative.open(seed, worldType, gameVersion);
         } catch (RuntimeException | LinkageError ignored) {
             return null;
         }
@@ -291,7 +317,7 @@ public final class SeedAtlasXaeroIntegration {
         }
     }
 
-    private record SessionKey(long seed, boolean largeBiomes) { }
+    private record SessionKey(long seed, boolean largeBiomes, GameVersion gameVersion) { }
 
     private static String contextDigest(String worldId, String multiworldId) {
         try {

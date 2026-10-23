@@ -3,6 +3,7 @@ package org.seedatlas.xaero.integration.marker;
 import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.List;
 import net.minecraft.client.Minecraft;
+import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.integration.icon.CompletedBadge;
 import org.seedatlas.xaero.integration.icon.StructureIcons;
@@ -115,6 +116,14 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
         pose.scale(iconScale, iconScale, 1.0F);
         var icon = StructureIcons.get(marker.textureId());
         var layout = icon.layout();
+        boolean completed = SeedAtlasStructureState.isCompleted(marker);
+        // Completed markers fade by the configured amount; the reader hides them at 0 %.
+        float alpha = completed ? SeedAtlasClientState.config().completedOpacityFraction() : 1.0F;
+        if (icon.block()) {
+            // Block textures are full squares: a dark frame keeps them apart from the map below.
+            int frame = Math.round(alpha * 0xC0) << 24 | 0x141414;
+            graphics.fill(layout.left() - 1, layout.top() - 1, layout.right() + 1, layout.bottom() + 1, frame);
+        }
         if (hovered) {
             // Outline only: keep the map visible through transparent icon pixels.
             int left = layout.left() - 1, top = layout.top() - 1;
@@ -132,10 +141,10 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
             // motif and the padding around it never shrinks the visible icon.
             layout.displayWidth(), layout.displayHeight(),
             layout.width(), layout.height(),
-            1.0F, 1.0F, 1.0F, 1.0F, layout.textureWidth(), layout.textureHeight(),
+            1.0F, 1.0F, 1.0F, alpha, layout.textureWidth(), layout.textureHeight(),
             Minecraft.getInstance().getTextureManager().getTexture(icon.texture()).getTextureView()
         );
-        if (SeedAtlasStructureState.isCompleted(marker)) {
+        if (completed) {
             // Badge on the lower right corner, drawn right after the icon so it stays on top.
             pose.translate(0.0F, 0.0F, 0.1F);
             MapRenderHelper.blitIntoMultiTextureRenderer(
@@ -143,7 +152,7 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
                 CompletedBadge.left(layout), CompletedBadge.top(layout), 0, 0,
                 CompletedBadge.DISPLAY_SIZE, CompletedBadge.DISPLAY_SIZE,
                 CompletedBadge.SOURCE_SIZE, CompletedBadge.SOURCE_SIZE,
-                1.0F, 1.0F, 1.0F, 1.0F,
+                1.0F, 1.0F, 1.0F, alpha,
                 CompletedBadge.SOURCE_SIZE, CompletedBadge.SOURCE_SIZE,
                 Minecraft.getInstance().getTextureManager().getTexture(CompletedBadge.TEXTURE).getTextureView()
             );

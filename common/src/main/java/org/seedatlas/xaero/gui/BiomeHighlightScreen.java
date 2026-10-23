@@ -26,7 +26,6 @@ public final class BiomeHighlightScreen extends SeedAtlasScreen {
 
     @Override
     protected void init() {
-        SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
         this.biomes = SeedAtlasXaeroIntegration.availableBiomes().stream()
             .sorted(Comparator.comparing(b -> SeedAtlasXaeroIntegration.biomeDisplayName(b.name()).getString()))
             .toList();

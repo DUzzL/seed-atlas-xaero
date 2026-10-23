@@ -1,8 +1,11 @@
 package org.seedatlas.xaero.config;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -13,8 +16,15 @@ import org.seedatlas.xaero.nativeapi.Dimension;
 
 /** Mutable, synchronized representation of the client configuration. */
 public final class SeedAtlasConfig {
-	public static final int CURRENT_VERSION = 7;
+	public static final int CURRENT_VERSION = 8;
 	public static final int DEFAULT_OPACITY = 255;
+	/** Completed structure markers in percent: 0 hides them, 100 draws them like every other marker. */
+	public static final int DEFAULT_COMPLETED_OPACITY = 100;
+	/**
+	 * Blocks a completed structure may move, e.g. between Minecraft versions, and stay completed.
+	 * Below 16 so neighbouring slime chunks and other per-chunk markers stay apart.
+	 */
+	public static final int COMPLETED_TOLERANCE = 12;
 	public static final int DEFAULT_BIOME_RESOLUTION = 1;
 	public static final int DEFAULT_WORKER_THREADS = 0;
 	public static final int DEFAULT_PREFETCH_RADIUS = 1;
@@ -33,8 +43,9 @@ public final class SeedAtlasConfig {
 	private boolean layerEnabled = true;
 	private int opacity = DEFAULT_OPACITY;
 	private boolean structuresEnabled;
-	private boolean hideCompletedStructures;
+	private int completedOpacity = DEFAULT_COMPLETED_OPACITY;
 	private final Set<StructureKey> completedStructures = new LinkedHashSet<>();
+	private final Map<StructureGroup, List<StructureKey>> completedByGroup = new HashMap<>();
 	private int biomeResolution = DEFAULT_BIOME_RESOLUTION;
 	private int workerThreads = DEFAULT_WORKER_THREADS;
 	private int prefetchRadius = DEFAULT_PREFETCH_RADIUS;
@@ -49,6 +60,8 @@ public final class SeedAtlasConfig {
 	private int endY = DEFAULT_END_Y;
 	private final Map<String, Boolean> markers = new LinkedHashMap<>();
 	private final Map<String, SeedProfile> seedProfiles = new LinkedHashMap<>();
+	/** Minecraft version per world or server context; absent means the running game's version. */
+	private final Map<String, String> gameVersions = new LinkedHashMap<>();
 
 	public SeedAtlasConfig() {
 		for (MarkerType type : MarkerType.all()) {
@@ -113,21 +126,90 @@ public final class SeedAtlasConfig {
 		return this.biomeHighlightEnabled ? Set.copyOf(this.highlightedBiomes) : Set.of();
 	}
 
-	public synchronized boolean hideCompletedStructures() { return hideCompletedStructures; }
+	public synchronized int completedOpacity() { return completedOpacity; }
 
-	synchronized boolean setHideCompletedStructures(boolean hide) {
-		if (hideCompletedStructures == hide) return false;
-		hideCompletedStructures = hide;
+	/** Read every frame by the marker renderer. */
+	public synchronized float completedOpacityFraction() { return completedOpacity / 100.0F; }
+
+	/** Completed markers at 0 % are hidden entirely, so they cannot be hovered or clicked either. */
+	public synchronized boolean hideCompletedStructures() { return completedOpacity == 0; }
+
+	synchronized boolean setCompletedOpacity(int opacity) {
+		int clamped = Math.max(0, Math.min(100, opacity));
+		if (completedOpacity == clamped) return false;
+		completedOpacity = clamped;
 		return true;
 	}
 
+	/**
+	 * Completed at this position or within {@link #COMPLETED_TOLERANCE} blocks of it, so progress
+	 * survives a Minecraft version or engine update that moves a structure by a few blocks.
+	 */
 	public synchronized boolean isCompleted(StructureKey key) {
-		return key != null && completedStructures.contains(key);
+		return key != null && (completedStructures.contains(key) || completedNear(key) != null);
 	}
 
 	synchronized boolean setCompleted(StructureKey key, boolean completed) {
 		Objects.requireNonNull(key);
-		return completed ? completedStructures.add(key) : completedStructures.remove(key);
+		if (completed) {
+			return !isCompleted(key) && restoreCompleted(key);
+		}
+		boolean removed = removeCompleted(key);
+		for (StructureKey near; (near = completedNear(key)) != null; ) removed |= removeCompleted(near);
+		return removed;
+	}
+
+	/** Adds a stored entry exactly as saved, without merging it into a nearby one. */
+	synchronized boolean restoreCompleted(StructureKey key) {
+		if (!completedStructures.add(key)) return false;
+		completedByGroup.computeIfAbsent(StructureGroup.of(key), group -> new ArrayList<>()).add(key);
+		return true;
+	}
+
+	/** Completed structures of a world or server, of one type or ({@code null}) all types. */
+	public synchronized int completedCount(String world, String type) {
+		int count = 0;
+		for (StructureKey key : completedStructures) {
+			if (key.world().equals(world) && (type == null || key.type().equals(type))) count++;
+		}
+		return count;
+	}
+
+	/** Marks every completed structure of a world or server, of one type or all, as not completed. */
+	synchronized int resetCompleted(String world, String type) {
+		List<StructureKey> matching = new ArrayList<>();
+		for (StructureKey key : completedStructures) {
+			if (key.world().equals(world) && (type == null || key.type().equals(type))) matching.add(key);
+		}
+		matching.forEach(this::removeCompleted);
+		return matching.size();
+	}
+
+	private boolean removeCompleted(StructureKey key) {
+		if (!completedStructures.remove(key)) return false;
+		List<StructureKey> group = completedByGroup.get(StructureGroup.of(key));
+		if (group != null) {
+			group.remove(key);
+			if (group.isEmpty()) completedByGroup.remove(StructureGroup.of(key));
+		}
+		return true;
+	}
+
+	private StructureKey completedNear(StructureKey key) {
+		List<StructureKey> group = completedByGroup.get(StructureGroup.of(key));
+		if (group == null) return null;
+		for (StructureKey other : group) {
+			if (Math.abs((long) other.x() - key.x()) <= COMPLETED_TOLERANCE
+				&& Math.abs((long) other.z() - key.z()) <= COMPLETED_TOLERANCE) return other;
+		}
+		return null;
+	}
+
+	/** Everything that identifies a completed structure except its position. */
+	private record StructureGroup(String world, long seed, boolean largeBiomes, String dimension, String type) {
+		static StructureGroup of(StructureKey key) {
+			return new StructureGroup(key.world(), key.seed(), key.largeBiomes(), key.dimension(), key.type());
+		}
 	}
 
 	synchronized Set<StructureKey> completedSnapshot() { return new LinkedHashSet<>(completedStructures); }
@@ -372,6 +454,22 @@ public final class SeedAtlasConfig {
 
 	synchronized boolean removeSeedProfile(final String contextKey) {
 		return this.seedProfiles.remove(contextKey) != null;
+	}
+
+	synchronized String gameVersion(final String contextKey) {
+		return this.gameVersions.get(contextKey);
+	}
+
+	/** {@code null} returns the context to the running game's version. */
+	synchronized boolean setGameVersion(final String contextKey, final String version) {
+		if (contextKey == null || contextKey.isBlank()) return false;
+		return version == null
+			? this.gameVersions.remove(contextKey) != null
+			: !version.equals(this.gameVersions.put(contextKey, version));
+	}
+
+	synchronized Map<String, String> gameVersionSnapshot() {
+		return new LinkedHashMap<>(this.gameVersions);
 	}
 
 	synchronized Map<String, Boolean> markerSnapshot() {
