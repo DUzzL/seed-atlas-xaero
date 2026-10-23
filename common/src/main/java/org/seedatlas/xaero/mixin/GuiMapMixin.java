@@ -4,16 +4,21 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
+import org.seedatlas.xaero.integration.ExploredTerrainRenderTypes;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
+import org.seedatlas.xaero.integration.MapNavigator;
 import org.seedatlas.xaero.integration.biome.SeedAtlasBiomeOverlayRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import xaero.lib.client.gui.widget.Tooltip;
 import xaero.map.gui.GuiMap;
@@ -22,17 +27,34 @@ import xaero.map.gui.TooltipButton;
 /** Full-map-only controls and lifecycle gate for the seed layer. */
 @Mixin(value = GuiMap.class, remap = false)
 abstract class GuiMapMixin {
+    /** Xaero's own bound with its "Unlimited zoom out" option: one pixel for 512 blocks. */
+    @Unique
+    private static final double SEED_ATLAS$MIN_SCALE = 0.001953125;
+
     @Shadow
     private double cameraX;
     @Shadow
     private double cameraZ;
     @Shadow
     private double scale;
+    @Shadow
+    private boolean shouldResetCameraPos;
+    @Shadow
+    private static boolean attachedCamera;
+    @Shadow
+    private Button settingsButton;
+
+    @Shadow
+    private void onSettingsButton(Button button) {
+        throw new AssertionError();
+    }
 
     @Unique
     private Button seedAtlas$layerButton;
     @Unique
     private Button seedAtlas$settingsButton;
+    @Unique
+    private Button seedAtlas$mapSettingsButton;
     @Unique
     private long seedAtlas$displayedRevision = Long.MIN_VALUE;
 
@@ -78,6 +100,21 @@ abstract class GuiMapMixin {
         );
     }
 
+    // Unexplored texels must not darken explored terrain where the seed layer surrounds it.
+    @ModifyArg(method = "extractRenderState", at = @At(
+        value = "INVOKE",
+        target = "Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRendererProvider;getRenderer(Lnet/minecraft/client/renderer/rendertype/RenderType;)Lxaero/map/graphics/renderer/multitexture/MultiTextureRenderTypeRenderer;"
+    ))
+    private RenderType seedAtlas$exploredTerrainType(RenderType type) {
+        return ExploredTerrainRenderTypes.replace(type);
+    }
+
+    // The seed layer is made for overviews, so with it on the map zooms out as far as Xaero allows at all.
+    @ModifyVariable(method = "applyZoomLimits", at = @At("LOAD"), name = "minScale")
+    private double seedAtlas$zoomOutFurther(double minScale) {
+        return SeedAtlasXaeroIntegration.isLayerConfigured() ? Math.min(minScale, SEED_ATLAS$MIN_SCALE) : minScale;
+    }
+
     @Inject(method = "init", at = @At("RETURN"))
     private void seedAtlas$addLayerControls(CallbackInfo ci) {
         GuiMap map = (GuiMap)(Object)this;
@@ -85,8 +122,7 @@ abstract class GuiMapMixin {
         SeedAtlasXaeroIntegration.setFullMapActive(true);
 
         // Xaero reserves x=0 in 20px rows along the left edge. Its own buttons
-        // occupy h-40/-60/-100/-120; h-20 and h-80 are intentionally free.
-        // Matching those slots avoids the centered coordinate text at y=2.
+        // occupy h-40/-60/-100/-120; h-20 is free for SA.
         int x = 0;
         int layerY = Math.max(0, map.height - 20);
         this.seedAtlas$layerButton = new TooltipButton(x, layerY, 20, 20,
@@ -97,17 +133,35 @@ abstract class GuiMapMixin {
         }, () -> new Tooltip(layerButtonText()));
         map.addButton(this.seedAtlas$layerButton);
 
-        int settingsY = Math.max(0, map.height - 80);
-        this.seedAtlas$settingsButton = new TooltipButton(x, settingsY, 20, 20,
-            Component.literal("..."), button -> SeedAtlasClientState.openSettings(map),
-            () -> new Tooltip(Component.translatable("screen.seedatlas_xaero.settings")));
+        // Compact controls in the top-left corner; full names remain available as tooltips.
+        Button xaeroSettings = this.settingsButton;
+        int settingsY = 0;
+        Tooltip mapTooltip = new Tooltip(Component.translatable("options.seedatlas_xaero.map_settings"));
+        Tooltip atlasTooltip = new Tooltip(Component.translatable("options.seedatlas_xaero.seed_atlas_settings"));
+        this.seedAtlas$mapSettingsButton = new TooltipButton(0, settingsY, 20, 20, Component.literal("M"),
+            button -> this.onSettingsButton(xaeroSettings), () -> mapTooltip);
+        map.addButton(this.seedAtlas$mapSettingsButton);
+        this.seedAtlas$settingsButton = new TooltipButton(22, settingsY, 20, 20, Component.literal("SA"),
+            button -> SeedAtlasClientState.openSettings(map), () -> atlasTooltip);
         map.addButton(this.seedAtlas$settingsButton);
+        if (xaeroSettings != null) {
+            xaeroSettings.visible = false;
+            xaeroSettings.active = false;
+        }
 
         this.seedAtlas$displayedRevision = SeedAtlasClientState.revision();
     }
 
     @Inject(method = "tick", at = @At("HEAD"))
     private void seedAtlas$refreshState(CallbackInfo ci) {
+        // Xaero recentres on the player until its first frame; wait for that, then jump.
+        if (MapNavigator.hasPendingCamera() && !this.shouldResetCameraPos) {
+            var target = MapNavigator.takeCamera();
+            attachedCamera = false;
+            this.cameraX = target.x();
+            this.cameraZ = target.z();
+        }
+        MapNavigator.tickWaypoint();
         SeedAtlasClientState.refreshContext(Minecraft.getInstance());
         SeedAtlasXaeroIntegration.synchronizeRevision();
         seedAtlas$observeXaeroView();
@@ -116,6 +170,9 @@ abstract class GuiMapMixin {
         }
         if (this.seedAtlas$settingsButton != null) {
             this.seedAtlas$settingsButton.visible = !GuiMap.hiddenUI;
+        }
+        if (this.seedAtlas$mapSettingsButton != null) {
+            this.seedAtlas$mapSettingsButton.visible = !GuiMap.hiddenUI;
         }
         long revision = SeedAtlasClientState.revision();
         if (revision == this.seedAtlas$displayedRevision) {

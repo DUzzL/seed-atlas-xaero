@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -27,6 +26,7 @@ import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.nativeapi.BlockBox;
 import org.seedatlas.xaero.nativeapi.BlockPos;
 import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.seedatlas.xaero.nativeapi.ScanResult;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.SpawnMode;
@@ -94,7 +94,7 @@ final class SeedAtlasStructureMarkerSource {
             return;
         }
         Dimension dimension = SeedAtlasXaeroIntegration.nativeDimension(level);
-        OptionalLong seed = SeedAtlasClientState.activeSeed();
+        OptionalLong seed = dimension == null ? OptionalLong.empty() : SeedAtlasClientState.activeSeed(dimension);
         if (dimension == null || seed.isEmpty()) {
             clear(context);
             return;
@@ -117,6 +117,7 @@ final class SeedAtlasStructureMarkerSource {
         Request next = new Request(
             seed.getAsLong(),
             SeedAtlasClientState.config().largeBiomes(),
+            SeedAtlasClientState.activeGameVersion(),
             dimension,
             level,
             centerX - radius,
@@ -292,31 +293,8 @@ final class SeedAtlasStructureMarkerSource {
             return List.of();
         }
         try {
-            List<SeedAtlasStructureMarker> result = SeedAtlasXaeroIntegration.withSession(session -> {
-                if (marker == MarkerType.SPAWN) {
-                    BlockPos spawn = session.spawn(SpawnMode.ESTIMATED);
-                    if (spawn != null && box.contains(spawn.x(), spawn.z())) {
-                        return List.of(new SeedAtlasStructureMarker(
-                            marker, spawn.x(), spawn.y(), spawn.z(), request.level, true));
-                    }
-                    return List.of();
-                }
-
-                int resultLimit = NORMAL_RESULTS_PER_TYPE;
-                ScanResult scanResult;
-                if (marker == MarkerType.STRONGHOLD) {
-                    scanResult = session.strongholds(box, resultLimit, true);
-                } else if (marker == MarkerType.SLIME_CHUNK) {
-                    scanResult = session.slimeChunks(box, NORMAL_SLIME_RESULTS);
-                } else {
-                    StructureType structureType = structureType(marker, request.dimension);
-                    if (structureType == null) {
-                        return List.of();
-                    }
-                    scanResult = session.structures(structureType, box, resultLimit, true);
-                }
-                return markersFromScan(marker, request.level, scanResult, session);
-            });
+            List<SeedAtlasStructureMarker> result = SeedAtlasXaeroIntegration.withSession(request.seed, request.largeBiomes, request.gameVersion,
+                session -> scanWithSession(session, request.level, request.dimension, box, marker));
             if (!current.getAsBoolean() || result == null) {
                 return List.of();
             }
@@ -324,6 +302,35 @@ final class SeedAtlasStructureMarkerSource {
         } catch (RuntimeException | LinkageError ignored) {
             return List.of();
         }
+    }
+
+    static List<SeedAtlasStructureMarker> scanWithSession(
+        SeedAtlasNative session, ResourceKey<Level> level, Dimension dimension,
+        BlockBox box, MarkerType marker
+    ) {
+        if (marker == MarkerType.SPAWN) {
+            BlockPos spawn = session.spawn(SpawnMode.ESTIMATED);
+            if (spawn != null && box.contains(spawn.x(), spawn.z())) {
+                return List.of(new SeedAtlasStructureMarker(
+                    marker, spawn.x(), spawn.y(), spawn.z(), level, true));
+            }
+            return List.of();
+        }
+
+        int resultLimit = NORMAL_RESULTS_PER_TYPE;
+        ScanResult scanResult;
+        if (marker == MarkerType.STRONGHOLD) {
+            scanResult = session.strongholds(box, resultLimit, true);
+        } else if (marker == MarkerType.SLIME_CHUNK) {
+            scanResult = session.slimeChunks(box, NORMAL_SLIME_RESULTS);
+        } else {
+            StructureType structureType = structureType(marker, dimension);
+            if (structureType == null) {
+                return List.of();
+            }
+            scanResult = session.structures(structureType, box, resultLimit, true);
+        }
+        return markersFromScan(marker, level, scanResult, session);
     }
 
     private static List<SeedAtlasStructureMarker> markersFromScan(
@@ -342,7 +349,8 @@ final class SeedAtlasStructureMarkerSource {
                 dimension,
                 position.approximate(),
                 position.campBiomeId() >= 0 ? session.biomeName(position.campBiomeId()) : null,
-                position.hasSpecialLoot()
+                position.hasSpecialLoot(),
+                position.type() == StructureType.ORE_VEIN_COPPER
             ));
         }
         return output;
@@ -386,7 +394,7 @@ final class SeedAtlasStructureMarkerSource {
             || marker == MarkerType.END_GATEWAY;
     }
 
-    private static boolean belongsToDimension(MarkerType marker, Dimension dimension) {
+    static boolean belongsToDimension(MarkerType marker, Dimension dimension) {
         return switch (dimension) {
             case OVERWORLD -> marker != MarkerType.BASTION
                 && marker != MarkerType.NETHER_FORTRESS
@@ -434,6 +442,7 @@ final class SeedAtlasStructureMarkerSource {
     private record Request(
         long seed,
         boolean largeBiomes,
+        GameVersion gameVersion,
         Dimension dimension,
         ResourceKey<Level> level,
         int minX,
@@ -448,6 +457,7 @@ final class SeedAtlasStructureMarkerSource {
         private boolean hasSameMarkerIdentity(Request other) {
             return this.seed == other.seed
                 && this.largeBiomes == other.largeBiomes
+                && this.gameVersion.equals(other.gameVersion)
                 && this.dimension == other.dimension
                 && this.level.equals(other.level)
                 && this.configured.equals(other.configured);

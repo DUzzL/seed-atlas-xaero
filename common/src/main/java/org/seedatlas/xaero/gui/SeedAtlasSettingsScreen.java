@@ -1,6 +1,6 @@
 package org.seedatlas.xaero.gui;
 
-import java.util.OptionalLong;
+import java.util.Locale;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractSliderButton;
@@ -13,25 +13,22 @@ import net.minecraft.network.chat.Component;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.config.SeedAtlasConfig;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
-import xaero.map.gui.GuiMap;
+import org.seedatlas.xaero.nativeapi.Dimension;
 
 /** Compact main settings screen, visually kept close to Xaero's option menus. */
-public final class SeedAtlasSettingsScreen extends Screen {
+public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 	private static final Component TITLE = Component.translatable("screen.seedatlas_xaero.settings");
-	private final Screen parent;
 	private OpacitySlider opacity;
 	private EditBox overworldY;
 	private EditBox netherY;
 	private EditBox endY;
 
 	public SeedAtlasSettingsScreen(final Screen parent) {
-		super(TITLE);
-		this.parent = parent;
+		super(TITLE, parent);
 	}
 
 	@Override
 	protected void init() {
-		SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
 		SeedAtlasConfig config = SeedAtlasClientState.config();
 		int contentWidth = Math.min(340, this.width - 20);
 		int left = (this.width - contentWidth) / 2;
@@ -44,15 +41,20 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		}).bounds(left, 34, halfWidth, 20).build();
 		this.addRenderableWidget(layer);
 
-		Button worldType = Button.builder(worldTypeMessage(config.largeBiomes()), button -> {
-			boolean large = !SeedAtlasClientState.config().largeBiomes();
-			SeedAtlasClientState.setLargeBiomes(large);
-			button.setMessage(worldTypeMessage(large));
-		}).bounds(left + halfWidth + gap, 34, halfWidth, 20).build();
-		this.addRenderableWidget(worldType);
+		this.addRenderableWidget(Button.builder(worldGenerationMessage(), button -> {
+			this.commitValues();
+			this.minecraft.gui.setScreen(new WorldGenerationScreen(this));
+		}).bounds(left + halfWidth + gap, 34, halfWidth, 20)
+			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.world_generation"))).build());
 
-		this.opacity = new OpacitySlider(left, 59, contentWidth, config.opacity());
+		this.opacity = new OpacitySlider(left, 59, halfWidth, config.opacity());
 		this.addRenderableWidget(this.opacity);
+		this.addRenderableWidget(Button.builder(overlayMessage(config.overlayExplored()), button -> {
+			boolean enabled = !SeedAtlasClientState.config().overlayExplored();
+			SeedAtlasClientState.setOverlayExplored(enabled);
+			button.setMessage(overlayMessage(enabled));
+		}).bounds(left + halfWidth + gap, 59, halfWidth, 20)
+			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.overlay_explored"))).build());
 
 		int fieldGap = 6;
 		int fieldWidth = (contentWidth - fieldGap * 2) / 3;
@@ -78,12 +80,37 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.performance"), button -> {
 			this.commitValues();
 			this.minecraft.gui.setScreen(new PerformanceSettingsScreen(this));
-		}).bounds(left, 150, contentWidth, 20).build());
+		}).bounds(left, 150, halfWidth, 20).build());
 
+		boolean terrainAvailable = SeedAtlasClientState.activeGameVersion().hasTerrain();
+		Button terrain = this.addRenderableWidget(Button.builder(terrainAvailable
+			? terrainStyleMessage(config.terrainStyle())
+			: Component.translatable("options.seedatlas_xaero.terrain_style.unavailable"), button -> {
+			boolean enabled = !SeedAtlasClientState.config().terrainStyle();
+			SeedAtlasClientState.setTerrainStyle(enabled);
+			button.setMessage(terrainStyleMessage(enabled));
+		}).bounds(left + halfWidth + gap, 150, halfWidth, 20)
+			.tooltip(Tooltip.create(Component.translatable(terrainAvailable
+				? "tooltip.seedatlas_xaero.terrain_style" : "tooltip.seedatlas_xaero.terrain_style.unavailable"))).build());
+		// Before 1.18 there is no noise-based terrain to predict.
+		terrain.active = terrainAvailable;
+
+		// One row of three: a fourth row would overlap the seed status and Done
+		// button at the smallest GUI height (240), e.g. auto scale on 1440p.
+		int thirdWidth = (contentWidth - gap * 2) / 3;
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.biome_highlights"), button -> {
 			this.commitValues();
 			this.minecraft.gui.setScreen(new BiomeHighlightScreen(this));
-		}).bounds(left, 175, contentWidth, 20).build());
+		}).bounds(left, 175, thirdWidth, 20).build());
+
+		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.go_biome"), button -> {
+			this.commitValues();
+			this.minecraft.gui.setScreen(new NearestScreen(this, true));
+		}).bounds(left + thirdWidth + gap, 175, thirdWidth, 20).build());
+		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.go_structure"), button -> {
+			this.commitValues();
+			this.minecraft.gui.setScreen(new NearestScreen(this, false));
+		}).bounds(left + (thirdWidth + gap) * 2, 175, contentWidth - (thirdWidth + gap) * 2, 20).build());
 
 		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
 			.bounds((this.width - 200) / 2, this.height - 28, 200, 20)
@@ -123,11 +150,7 @@ public final class SeedAtlasSettingsScreen extends Screen {
 			0xFFA0A0A0
 		);
 
-		OptionalLong seed = SeedAtlasClientState.activeSeed();
-		Component status = seed.isPresent()
-			? Component.translatable("screen.seedatlas_xaero.active_seed", seed.getAsLong())
-			: Component.translatable("screen.seedatlas_xaero.no_seed");
-		graphics.centeredText(this.font, status, this.width / 2, this.height - 42, 0xFFA0A0A0);
+		graphics.centeredText(this.font, seedStatus(), this.width / 2, this.height - 42, 0xFFA0A0A0);
 	}
 
 	@Override
@@ -167,11 +190,42 @@ public final class SeedAtlasSettingsScreen extends Screen {
 		return Component.translatable("options.seedatlas_xaero.layer", toggleValue(enabled));
 	}
 
-	private static Component worldTypeMessage(final boolean largeBiomes) {
+	/** "World: 26.2, Normal"; the version is the active world's or server's. */
+	private static Component worldGenerationMessage() {
 		return Component.translatable(
-			"options.seedatlas_xaero.world_type",
-			Component.translatable(largeBiomes ? "options.seedatlas_xaero.world_type.large" : "options.seedatlas_xaero.world_type.normal")
+			"options.seedatlas_xaero.world_generation",
+			SeedAtlasClientState.activeGameVersion().label(),
+			Component.translatable(SeedAtlasClientState.config().largeBiomes()
+				? "options.seedatlas_xaero.world_type.large" : "options.seedatlas_xaero.world_type.normal")
 		);
+	}
+
+	/** "Active seed: X", followed by the Nether's and End's own seeds when they have one. */
+	private static Component seedStatus() {
+		SeedAtlasConfig.SeedProfile profile = SeedAtlasClientState.activeProfile().orElse(null);
+		if (profile == null) {
+			return Component.translatable("screen.seedatlas_xaero.no_seed");
+		}
+		var status = (profile.base() == null
+			? Component.translatable("screen.seedatlas_xaero.no_base_seed")
+			: Component.translatable("screen.seedatlas_xaero.active_seed", profile.base().seed())).copy();
+		for (Dimension dimension : new Dimension[]{Dimension.NETHER, Dimension.END}) {
+			SeedAtlasConfig.SeedValue own = profile.ownSeed(dimension);
+			if (own != null) {
+				status.append(" · ").append(Component.translatable("screen.seedatlas_xaero.dimension_seed",
+					Component.translatable("dimension.seedatlas_xaero." + dimension.name().toLowerCase(Locale.ROOT)),
+					own.seed()));
+			}
+		}
+		return status;
+	}
+
+	private static Component terrainStyleMessage(final boolean enabled) {
+		return Component.translatable("options.seedatlas_xaero.terrain_style", toggleValue(enabled));
+	}
+
+	private static Component overlayMessage(final boolean enabled) {
+		return Component.translatable("options.seedatlas_xaero.overlay_explored", toggleValue(enabled));
 	}
 
 	private static Component structuresMessage(final boolean enabled) {

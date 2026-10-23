@@ -3,6 +3,7 @@ package org.seedatlas.xaero.integration.icon;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import javax.imageio.ImageIO;
 
 /** Geometry and asset regressions that do not need a running Minecraft client. */
@@ -39,20 +40,14 @@ public final class IconLayoutTest {
                     "Horizontal aspect ratio: " + path);
                 check(Math.abs(bounds.displayHeight() - bounds.height() * scale) <= 0.5,
                     "Vertical aspect ratio: " + path);
+                // Nearest sampling at ~18 px only stays crisp for pixel art drawn near that size.
+                check(Math.max(image.getWidth(), image.getHeight()) <= 32, "Icons are small pixel art: " + path);
+                check(blackShare(image, bounds) < 0.45, "Black outlines must not dominate the motif: " + path);
                 count++;
             }
         }
-        check(count == 29, "Every bundled structure and helper icon must be checked");
-        BufferedImage mine = ImageIO.read(directory.resolve("mineshaft.png").toFile());
-        IconLayout mineBounds = measure(mine);
-        int transparent = 0;
-        for (int y = mineBounds.v(); y < mineBounds.v() + mineBounds.height(); y++) {
-            for (int x = mineBounds.u(); x < mineBounds.u() + mineBounds.width(); x++) {
-                if ((mine.getRGB(x, y) >>> 24) < 8) transparent++;
-            }
-        }
-        check(transparent > mineBounds.width() * mineBounds.height() / 4,
-            "Rail gaps must be transparent instead of a solid black rectangle");
+        // The other markers show Minecraft's own block and item textures, which are never bundled.
+        check(count == 6, "Every bundled pixel-art icon must be checked");
         BufferedImage camp = ImageIO.read(directory.resolve("camp.png").toFile());
         BufferedImage special = ImageIO.read(directory.resolve("camp_special.png").toFile());
         for (BufferedImage image : new BufferedImage[]{camp, special}) {
@@ -112,6 +107,19 @@ public final class IconLayoutTest {
             * IconLayout.DISPLAY_SIZE / (float) viewportShortSide;
     }
 
+    /** Share of near-black opaque pixels inside the visible bounds. */
+    private static double blackShare(BufferedImage image, IconLayout bounds) {
+        int black = 0;
+        for (int y = bounds.v(); y < bounds.v() + bounds.height(); y++) {
+            for (int x = bounds.u(); x < bounds.u() + bounds.width(); x++) {
+                int argb = image.getRGB(x, y);
+                int max = Math.max((argb >> 16) & 0xFF, Math.max((argb >> 8) & 0xFF, argb & 0xFF));
+                if ((argb >>> 24) >= 8 && max < 30) black++;
+            }
+        }
+        return black / (double) (bounds.width() * bounds.height());
+    }
+
     private static boolean sameSilhouette(BufferedImage first, BufferedImage second) {
         for (int y = 0; y < first.getHeight(); y++) {
             for (int x = 0; x < first.getWidth(); x++) {
@@ -122,7 +130,7 @@ public final class IconLayoutTest {
     }
 
     private static int distinctColours(BufferedImage image) {
-        var colours = new java.util.HashSet<Integer>();
+        var colours = new HashSet<Integer>();
         for (int y = 0; y < image.getHeight(); y++) {
             for (int x = 0; x < image.getWidth(); x++) colours.add(image.getRGB(x, y));
         }

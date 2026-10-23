@@ -43,8 +43,7 @@ public enum MarkerType {
 	VILLAGE("village", false),
 	DESERT_WELL("well", true);
 
-	// Camps were introduced in 26.3. Keep the enum ID for compatibility, not in the UI.
-	private static final List<MarkerType> VALUES = Arrays.stream(values()).filter(type -> type != ABANDONED_CAMP).toList();
+	private static final List<MarkerType> VALUES = List.copyOf(Arrays.asList(values()));
 
 	private final String id;
 	private final boolean helper;

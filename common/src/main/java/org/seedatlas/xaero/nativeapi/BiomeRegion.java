@@ -76,14 +76,6 @@ public final class BiomeRegion {
         return sampleHeight;
     }
 
-    public int coveredBlockWidth() {
-        return Math.multiplyExact(sampleWidth, sampleStep);
-    }
-
-    public int coveredBlockHeight() {
-        return Math.multiplyExact(sampleHeight, sampleStep);
-    }
-
     /** Returns one defensive copy suitable for bulk texture upload. */
     public int[] argbSamples() {
         return argbSamples.clone();
@@ -137,11 +129,7 @@ public final class BiomeRegion {
         return biomeIds[blockIndex(blockX, blockZ)];
     }
 
-    public int argbAtBlock(int blockX, int blockZ) {
-        return argbSamples[blockIndex(blockX, blockZ)];
-    }
-
-    /** Expands one contained chunk on demand for the legacy Xaero highlighter. */
+    /** Expands one contained chunk; the native smoke test compares it with chunk sampling. */
     public BiomeTile biomeTile(int chunkX, int chunkZ) {
         long blockX = (long) chunkX * BiomeTile.SIZE;
         long blockZ = (long) chunkZ * BiomeTile.SIZE;

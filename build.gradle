@@ -99,7 +99,7 @@ publishing {
 	}
 }
 
-// Exercise the actual bundled library through Java FFM, including 26.2
+// Exercise the actual bundled library through Java FFM, including 26.3
 // generation fixtures and concurrent biome calls, on each host platform.
 def nativeTestClasses = layout.buildDirectory.dir('classes/nativeSmokeTest')
 tasks.register('compileNativeSmokeTest', JavaCompile) {
@@ -170,6 +170,40 @@ tasks.named('check') {
 	dependsOn tasks.named('biomeHighlightTest')
 }
 
+// Bootstrap vanilla registries in a separate JVM from the non-bootstrapped biome tests.
+tasks.register('netherCaveMaskTest', JavaExec) {
+	dependsOn tasks.named('compileBiomeHighlightTest'), tasks.named('processResources')
+	classpath = files(biomeHighlightTestClasses) + sourceSets.main.output + sourceSets.client.runtimeClasspath
+	mainClass = 'org.seedatlas.xaero.integration.biome.NetherCaveMaskTest'
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
+	workingDir = layout.buildDirectory.dir('netherCaveMaskTest').get().asFile
+	doFirst { workingDir.mkdirs() }
+}
+
+tasks.named('check') { dependsOn tasks.named('netherCaveMaskTest') }
+
+// Seed-only vanilla density parity and sampler cache checks, isolated from client/bootstrap state.
+tasks.register('overworldTerrainSamplerTest', JavaExec) {
+	dependsOn tasks.named('compileBiomeHighlightTest'), tasks.named('processResources')
+	classpath = files(biomeHighlightTestClasses) + sourceSets.main.output + sourceSets.client.runtimeClasspath
+	mainClass = 'org.seedatlas.xaero.integration.biome.OverworldTerrainSamplerTest'
+	workingDir = layout.buildDirectory.dir('overworldTerrainSamplerTest').get().asFile
+	if (providers.gradleProperty('overworldSamplerBenchmark').isPresent()) args '--benchmark'
+	doFirst { workingDir.mkdirs() }
+}
+
+tasks.named('check') { dependsOn tasks.named('overworldTerrainSamplerTest') }
+
+// Opt-in: first-pass cost of one map tile per dimension and zoom step (not part of check).
+tasks.register('dimensionTileBenchmark', JavaExec) {
+	dependsOn tasks.named('compileBiomeHighlightTest'), tasks.named('processResources')
+	classpath = files(biomeHighlightTestClasses) + sourceSets.main.output + sourceSets.client.runtimeClasspath
+	mainClass = 'org.seedatlas.xaero.integration.biome.DimensionTileBenchmark'
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
+	workingDir = layout.buildDirectory.dir('dimensionTileBenchmark').get().asFile
+	doFirst { workingDir.mkdirs() }
+}
+
 // Keep the loader-neutral client command tree equivalent across all builds.
 def commandTestClasses = layout.buildDirectory.dir('classes/commandTest')
 tasks.register('compileCommandTest', JavaCompile) {
@@ -185,7 +219,7 @@ tasks.register('commandRegistrationTest', JavaExec) {
 }
 tasks.named('check') { dependsOn tasks.named('commandRegistrationTest') }
 
-// Validate Xaero's mixin targets and captured locals without launching Minecraft.
+// Run the runtime Xaero compatibility check (mixin targets, captured locals, linkage) without Minecraft.
 def xaeroTestClasses = layout.buildDirectory.dir('classes/xaeroCompatibilityTest')
 tasks.register('compileXaeroCompatibilityTest', JavaCompile) {
     dependsOn tasks.named('clientClasses')
@@ -197,5 +231,8 @@ tasks.register('xaeroCompatibilityTest', JavaExec) {
     dependsOn tasks.named('compileXaeroCompatibilityTest')
     classpath = files(xaeroTestClasses) + sourceSets.client.runtimeClasspath
     mainClass = 'org.seedatlas.xaero.integration.XaeroCompatibilityTest'
+    // -PxaeroCompatJar=<jar> checks a newer Xaero release against these compiled classes.
+    def compatJar = providers.gradleProperty('xaeroCompatJar')
+    if (compatJar.isPresent()) systemProperty 'seedatlas.xaeroJar', compatJar.get()
 }
 tasks.named('check') { dependsOn tasks.named('xaeroCompatibilityTest') }

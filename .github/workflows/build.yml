@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run: |
           cp build/generated/native-resources/natives/${{ matrix.platform }}/seedatlas_xaero.* common/src/main/resources/natives/${{ matrix.platform }}/
-          bash ./gradlew nativeSmokeTest --rerun-tasks
+          SAX_REQUIRE_HEIGHTS=1 bash ./gradlew nativeSmokeTest --rerun-tasks
       - uses: actions/upload-artifact@v7
         with:
           name: natives-${{ matrix.platform }}

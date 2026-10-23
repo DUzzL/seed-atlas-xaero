@@ -41,7 +41,11 @@ enum sax_capability {
     SAX_CAP_ORE_VEINS = 1u << 5,
     SAX_CAP_END_SHIPS = 1u << 6,
     SAX_CAP_BIOME_SAMPLING = 1u << 7,
-    SAX_CAP_BIOME_AREAS = 1u << 8
+    SAX_CAP_BIOME_AREAS = 1u << 8,
+    SAX_CAP_HEIGHTS = 1u << 9,
+    SAX_CAP_NETHER_FLOOR = 1u << 10,
+    SAX_CAP_NETHER_CARVING = 1u << 11,
+    SAX_CAP_MC_VERSIONS = 1u << 12
 };
 
 enum sax_dimension {
@@ -107,7 +111,7 @@ enum sax_result_flags {
 };
 
 enum {
-    SAX_ABI_VERSION = 5,
+    SAX_ABI_VERSION = 6,
     SAX_CHUNK_SAMPLE_COUNT = 16 * 16,
     SAX_MAX_BIOME_AREA_SAMPLES = 4 * 1024 * 1024,
     SAX_RESULT_STRIDE = 6,
@@ -122,7 +126,20 @@ SAX_API uint32_t sax_capabilities(void);
 /* Copies a NUL-terminated version into out. Returns required bytes incl. NUL. */
 SAX_API int32_t sax_engine_version(char *out, int32_t capacity);
 
+/* Generates the newest supported Minecraft version. */
 SAX_API sax_context *sax_create(int64_t seed, uint32_t world_flags);
+
+/*
+ * Additive ABI 6 capability (SAX_CAP_MC_VERSIONS): generates the Minecraft
+ * version named like the Seed Atlas app does ("26.2", "1.21.4", "1.20" for the
+ * latest 1.20.x). NULL selects the newest version. Returns NULL for versions
+ * before 1.1 or names the engine does not know. Before 1.18 there are no
+ * terrain heights, Nether floors or ore veins (SAX_ERR_UNSUPPORTED / no results).
+ */
+SAX_API sax_context *sax_create_versioned(int64_t seed, uint32_t world_flags,
+                                          const char *mc_version);
+/* 1 when sax_create_versioned accepts the version name, else 0. */
+SAX_API int32_t sax_mc_version_supported(const char *mc_version);
 SAX_API void sax_destroy(sax_context *context);
 
 /* Returns SAX_OK and writes a biome id, or a negative sax_error. */
@@ -172,9 +189,55 @@ SAX_API int32_t sax_biome_area_sampled(
     int32_t sample_step, int32_t sample_width, int32_t sample_height,
     int32_t *out_ids, uint32_t *out_argb, int32_t output_capacity);
 
+/*
+ * Approximate Overworld terrain height in blocks, for display shading only.
+ * It is the 1.18+ continentalness/erosion/weirdness offset spline sampled on
+ * the biome climate lattice, not the real surface: caves, overhangs, trees and
+ * structures are not modelled and mountains are smoothed. Each entry is the
+ * estimate at the centre of a sample_step x sample_step block cell; steps
+ * below 4 interpolate between climate cells. Origins need no alignment.
+ * The End returns the engine's density-based island heights in blocks (0 is
+ * void) for steps 1..8 on step-aligned origins (SAX_ERR_UNSUPPORTED above 8,
+ * SAX_ERR_ARGUMENT if unaligned). The Nether returns SAX_ERR_UNSUPPORTED here;
+ * use sax_nether_floor_area_sampled.
+ */
+SAX_API int32_t sax_height_area_sampled(
+    const sax_context *context, int32_t dimension,
+    int32_t origin_block_x, int32_t origin_block_z,
+    int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    float *out_heights, int32_t output_capacity);
+
+/*
+ * Vanilla Nether terrain on the noise-router final_density: the cave-mode
+ * surface at layer y (clamped to 1..127). Pass 127 for Xaero's Full cave mode,
+ * which starts at the roof, NOT the biome sampling Y. It skips any
+ * rock at y, then returns the first solid block below the open space (0 when
+ * there is none). A value below 31 is a seabed under the lava sea. Steps 1..4
+ * interpolate noise cells and need no alignment; steps 8 and 16 sample the
+ * nearest noise cell. Larger steps return SAX_ERR_UNSUPPORTED.
+ */
+SAX_API int32_t sax_nether_floor_area_sampled(
+    const sax_context *context, int32_t origin_block_x, int32_t origin_block_z,
+    int32_t y, int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    float *out_heights, int32_t output_capacity);
+
+/* Additive ABI 6 capability: two uint64 words per sample, bit y marks carved air.
+ * The mask uses the same sample centres/order as the floor output. Capacities
+ * count words and float samples respectively; neither buffer is retained. */
+SAX_API int32_t sax_nether_floor_area_carved_sampled(
+    const sax_context *context, int32_t origin_block_x, int32_t origin_block_z,
+    int32_t y, int32_t sample_step, int32_t sample_width, int32_t sample_height,
+    const uint64_t *carved, int32_t carved_capacity,
+    float *out_heights, int32_t output_capacity);
 /* Returns required bytes including NUL; 0 means the id has no known name. */
 SAX_API int32_t sax_biome_name(int32_t biome_id, char *out, int32_t capacity);
 SAX_API uint32_t sax_biome_color(int32_t biome_id);
+/* The same for the context's version, e.g. "mountains" before 1.18 (SAX_CAP_MC_VERSIONS). */
+SAX_API int32_t sax_context_biome_name(const sax_context *context, int32_t biome_id,
+                                       char *out, int32_t capacity);
+SAX_API uint32_t sax_context_biome_color(const sax_context *context, int32_t biome_id);
+/* 1 when the context's version has terrain heights and Nether floors (1.18+). */
+SAX_API int32_t sax_context_has_terrain(const sax_context *context);
 
 /*
  * Finds starts/markers whose X/Z coordinate is inside the inclusive block
@@ -186,6 +249,7 @@ SAX_API uint32_t sax_biome_color(int32_t biome_id);
  * Camp detail uses sax_camp_detail; unchecked camp detail is -1.
  *
  * Returns the number written, capacity + 1 when truncated, or sax_error.
+ * A structure the context's version does not generate yields 0 results.
  */
 SAX_API int32_t sax_scan_structures(const sax_context *context,
                                     int32_t structure_type,

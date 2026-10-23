@@ -9,8 +9,8 @@ set(SEEDATLAS_ENGINE_DIR "" CACHE PATH "Optional local Seed Atlas engine checkou
 if(NOT SEEDATLAS_ENGINE_DIR)
     include(FetchContent)
     FetchContent_Declare(seedatlas_source
-        URL https://codeload.github.com/DUzzL/Seed-Atlas/tar.gz/30f024b724aca816b7ccd4ada640ccb22125ff60
-        URL_HASH SHA256=039022be0f05d018b4c58193ca37f181efe9e5bb660a60177f454d0e6a30a750
+        URL https://codeload.github.com/DUzzL/Seed-Atlas/tar.gz/fc2c628693bc72130d7c16a21636f50d57553ddf
+        URL_HASH SHA256=9b90ec564b23ee53053147068db82e0361cc79c74cb8632350a68a29acd64d10
         SOURCE_SUBDIR seedatlas-no-cmake-subdirectory
     )
     FetchContent_MakeAvailable(seedatlas_source)
@@ -84,6 +84,19 @@ if(BUILD_TESTING)
         target_compile_options(seedatlas_xaero_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME seedatlas_xaero_abi COMMAND seedatlas_xaero_test)
+
+    add_executable(nether_reference_test tests/nether_reference_test.c ${SEEDATLAS_ENGINE_SOURCES})
+    target_include_directories(nether_reference_test PRIVATE "${SEEDATLAS_ENGINE_DIR}")
+    target_compile_definitions(nether_reference_test PRIVATE SEEDATLAS_XAERO_BUILD=1)
+    if(MSVC)
+        target_compile_options(nether_reference_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(nether_reference_test PRIVATE -UNDEBUG)
+        if(NOT WIN32)
+            target_link_libraries(nether_reference_test PRIVATE m)
+        endif()
+    endif()
+    add_test(NAME nether_vanilla_26_3 COMMAND nether_reference_test)
 
     add_executable(seedatlas_xaero_benchmark
         tests/seedatlas_xaero_benchmark.c)

@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * Pure-Java facade for the bundled Seed Atlas MC 26.2 native generation ABI.
+ * Pure-Java facade for the bundled Seed Atlas native generation ABI.
  * Instances are safe for concurrent reads; close waits for active calls.
  */
 public final class SeedAtlasNative implements AutoCloseable {
@@ -27,29 +27,65 @@ public final class SeedAtlasNative implements AutoCloseable {
 
     private final long seed;
     private final WorldType worldType;
+    private final GameVersion gameVersion;
     private final NativeBindings bindings;
     private final NativeState nativeState;
     private final Cleaner.Cleanable cleanable;
     private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
     private boolean closed;
 
-    private SeedAtlasNative(long seed, WorldType worldType, NativeBindings bindings,
-                            MemorySegment context) {
+    private SeedAtlasNative(long seed, WorldType worldType, GameVersion gameVersion,
+                            NativeBindings bindings, MemorySegment context) {
         this.seed = seed;
         this.worldType = worldType;
+        this.gameVersion = gameVersion;
         this.bindings = bindings;
         this.nativeState = new NativeState(bindings, context);
         this.cleanable = CLEANER.register(this, nativeState);
     }
 
+    /** Generates the newest Minecraft version the engine supports. */
     public static SeedAtlasNative open(long seed, WorldType worldType) {
+        return open(seed, worldType, GameVersion.NEWEST);
+    }
+
+    /** Generates {@code gameVersion}; throws when the loaded library cannot select it. */
+    public static SeedAtlasNative open(long seed, WorldType worldType, GameVersion gameVersion) {
         Objects.requireNonNull(worldType, "worldType");
+        Objects.requireNonNull(gameVersion, "gameVersion");
         NativeBindings bindings = bindings();
-        MemorySegment context = bindings.create(seed, worldType.nativeFlags());
-        if (context.equals(MemorySegment.NULL) || context.address() == 0) {
-            throw new NativeException("Could not allocate a native Seed Atlas context");
+        MemorySegment context;
+        if (gameVersion.isNewest() && !bindings.supportsMcVersions()) {
+            context = bindings.create(seed, worldType.nativeFlags());
+        } else {
+            if (!bindings.supportsMcVersions()) {
+                throw new NativeException("Native library cannot generate Minecraft " + gameVersion.name());
+            }
+            try (Arena arena = Arena.ofConfined()) {
+                context = bindings.createVersioned(seed, worldType.nativeFlags(),
+                    arena.allocateFrom(gameVersion.name()));
+            }
         }
-        return new SeedAtlasNative(seed, worldType, bindings, context);
+        if (context.equals(MemorySegment.NULL) || context.address() == 0) {
+            throw new NativeException("Could not allocate a native Seed Atlas context for Minecraft "
+                + gameVersion.name());
+        }
+        return new SeedAtlasNative(seed, worldType, gameVersion, bindings, context);
+    }
+
+    /** True when the loaded engine can generate {@code gameVersion}. */
+    public static boolean supports(GameVersion gameVersion) {
+        Objects.requireNonNull(gameVersion, "gameVersion");
+        BindingResult result = bindingResult();
+        if (result.bindings == null) {
+            return false;
+        }
+        if (!result.bindings.supportsMcVersions()) {
+            return gameVersion.isNewest();
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            return result.bindings.mcVersionSupported(arena.allocateFrom(gameVersion.name()));
+        }
     }
 
     /** Loads and ABI-checks the library, returning a diagnostic instead of throwing. */
@@ -77,6 +113,10 @@ public final class SeedAtlasNative implements AutoCloseable {
         return worldType;
     }
 
+    public GameVersion gameVersion() {
+        return gameVersion;
+    }
+
     public BiomeSample biomeAt(Dimension dimension, int x, int y, int z) {
         Objects.requireNonNull(dimension, "dimension");
         lifecycleLock.readLock().lock();
@@ -86,7 +126,7 @@ public final class SeedAtlasNative implements AutoCloseable {
             checkError(bindings.biomeAt(context, dimension.nativeId(), x, y, z, output),
                 "generate biome");
             int id = output.get(ValueLayout.JAVA_INT, 0);
-            return new BiomeSample(id, biomeName(id), bindings.biomeColor(id));
+            return new BiomeSample(id, biomeName(id), biomeColor(id));
         } finally {
             lifecycleLock.readLock().unlock();
         }
@@ -161,6 +201,88 @@ public final class SeedAtlasNative implements AutoCloseable {
             return BiomeRegion.fromOwnedArrays(
                 originBlockX, originBlockZ, y, sampleStep,
                 sampleWidth, sampleHeight, ids, colors);
+        } finally {
+            lifecycleLock.readLock().unlock();
+        }
+    }
+
+    /** True when the loaded library can estimate terrain heights (ABI 5+). */
+    public boolean supportsHeights() {
+        return bindings.supportsHeights();
+    }
+
+    /**
+     * Approximate Overworld terrain height in blocks per sample, row-major, for
+     * display shading only (see sax_height_area_sampled). The origin need not be
+     * aligned and may be a halo outside the biome tile.
+     */
+    public float[] heightArea(Dimension dimension, int originBlockX, int originBlockZ,
+                              int sampleStep, int sampleWidth, int sampleHeight) {
+        Objects.requireNonNull(dimension, "dimension");
+        validateArea(sampleStep, sampleWidth, sampleHeight);
+        if (!bindings.supportsHeights()) {
+            throw new NativeException("Native library does not provide terrain heights");
+        }
+        int sampleCount = Math.multiplyExact(sampleWidth, sampleHeight);
+        lifecycleLock.readLock().lock();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment context = context();
+            MemorySegment out = arena.allocate(ValueLayout.JAVA_FLOAT, sampleCount);
+            checkError(bindings.heightAreaSampled(context, dimension.nativeId(),
+                originBlockX, originBlockZ, sampleStep, sampleWidth, sampleHeight,
+                out, sampleCount), "estimate terrain heights");
+            return out.toArray(ValueLayout.JAVA_FLOAT);
+        } finally {
+            lifecycleLock.readLock().unlock();
+        }
+    }
+
+    /** True when the loaded library can compute density-derived Nether floors (ABI 6+). */
+    public boolean supportsNetherFloor() {
+        return bindings.supportsNetherFloor();
+    }
+
+    public boolean supportsNetherCarving() {
+        return bindings.supportsNetherCarving();
+    }
+
+    /**
+     * Density-only Nether cave-floor height at layer y, row-major (see
+     * sax_nether_floor_area_sampled). Steps 1..16; the origin may be a halo.
+     */
+    public float[] netherFloorArea(int originBlockX, int originBlockZ, int y,
+                                   int sampleStep, int sampleWidth, int sampleHeight) {
+        return netherFloorArea(originBlockX, originBlockZ, y, sampleStep, sampleWidth, sampleHeight, null);
+    }
+
+    /** Optional seed-derived carved-air bits: two words per sample covering Y 0..127. */
+    public float[] netherFloorArea(int originBlockX, int originBlockZ, int y,
+                                  int sampleStep, int sampleWidth, int sampleHeight, long[] carved) {
+        validateArea(sampleStep, sampleWidth, sampleHeight);
+        if (!bindings.supportsNetherFloor()) {
+            throw new NativeException("Native library does not provide the Nether floor");
+        }
+        int sampleCount = Math.multiplyExact(sampleWidth, sampleHeight);
+        if (carved != null) {
+            if (carved.length != Math.multiplyExact(sampleCount, 2)) {
+                throw new IllegalArgumentException("Nether carving masks require two words per sample");
+            }
+            if (!bindings.supportsNetherCarving()) {
+                throw new NativeException("Native library does not support Nether carving masks");
+            }
+        }
+        lifecycleLock.readLock().lock();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment context = context();
+            MemorySegment out = arena.allocate(ValueLayout.JAVA_FLOAT, sampleCount);
+            int result = carved == null
+                ? bindings.netherFloorAreaSampled(context, originBlockX, originBlockZ, y,
+                    sampleStep, sampleWidth, sampleHeight, out, sampleCount)
+                : bindings.netherFloorAreaCarvedSampled(context, originBlockX, originBlockZ, y,
+                    sampleStep, sampleWidth, sampleHeight, arena.allocateFrom(ValueLayout.JAVA_LONG, carved),
+                    carved.length, out, sampleCount);
+            checkError(result, "compute the Nether floor");
+            return out.toArray(ValueLayout.JAVA_FLOAT);
         } finally {
             lifecycleLock.readLock().unlock();
         }
@@ -254,25 +376,40 @@ public final class SeedAtlasNative implements AutoCloseable {
         return nativeState.context();
     }
 
-    /** Resolves an engine biome id to a namespaced Minecraft resource name. */
+    /** Resolves an engine biome id to a namespaced resource name of this context's version. */
     public String biomeName(int id) {
-        int required = bindings.biomeName(id, MemorySegment.NULL, 0);
-        if (required <= 0) {
-            return "minecraft:unknown_" + id;
-        }
+        lifecycleLock.readLock().lock();
         try (Arena arena = Arena.ofConfined()) {
+            boolean own = bindings.supportsContextBiomes();
+            MemorySegment context = own ? context() : MemorySegment.NULL;
+            int required = own ? bindings.contextBiomeName(context, id, MemorySegment.NULL, 0)
+                : bindings.biomeName(id, MemorySegment.NULL, 0);
+            if (required <= 0) {
+                return "minecraft:unknown_" + id;
+            }
             MemorySegment output = arena.allocate(required);
-            int written = bindings.biomeName(id, output, required);
+            int written = own ? bindings.contextBiomeName(context, id, output, required)
+                : bindings.biomeName(id, output, required);
             if (written <= 0) {
                 return "minecraft:unknown_" + id;
             }
             return "minecraft:" + output.getString(0);
+        } finally {
+            lifecycleLock.readLock().unlock();
         }
     }
 
-    /** Resolves an engine biome id to an opaque ARGB color (0 for unknown). */
+    /** Resolves an engine biome id to an opaque ARGB color of this context's version (0 for unknown). */
     public int biomeColor(int id) {
-        return bindings.biomeColor(id);
+        if (!bindings.supportsContextBiomes()) {
+            return bindings.biomeColor(id);
+        }
+        lifecycleLock.readLock().lock();
+        try {
+            return bindings.contextBiomeColor(context(), id);
+        } finally {
+            lifecycleLock.readLock().unlock();
+        }
     }
 
     private static MemorySegment resultBuffer(Arena arena, int maxResults) {

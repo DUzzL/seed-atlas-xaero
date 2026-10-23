@@ -14,7 +14,7 @@ config="seedatlas_xaero.client.mixins.json"
 [[dependencies.seedatlas_xaero]]
 modId="neoforge"
 type="required"
-versionRange="[26.2.0.88,26.3)"
+versionRange="[26.2.0.93,26.3)"
 ordering="NONE"
 side="CLIENT"
 
@@ -28,6 +28,6 @@ side="CLIENT"
 [[dependencies.seedatlas_xaero]]
 modId="xaeroworldmap"
 type="required"
-versionRange="[${xaero_world_map_version}]"
+versionRange="[${xaero_world_map_version},)"
 ordering="AFTER"
 side="CLIENT"

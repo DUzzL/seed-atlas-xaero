@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -16,11 +17,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.server.IntegratedServer;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.storage.LevelResource;
+import org.seedatlas.xaero.SeedAtlasXaero;
 import org.seedatlas.xaero.gui.SeedAtlasSettingsScreen;
+import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
+import org.seedatlas.xaero.nativeapi.Dimension;
+import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,11 +44,10 @@ public final class SeedAtlasClientState {
 	private static volatile SeedAtlasConfig config = new SeedAtlasConfig();
 	private static volatile boolean initialized;
 	private static volatile WorldContext activeContext = NO_CONTEXT;
-	private static volatile OptionalLong activeSeed = OptionalLong.empty();
-	private static volatile String activeSeedInput;
+	/** Seeds of the active context, or null when none is configured. */
+	private static volatile SeedAtlasConfig.SeedProfile activeProfile;
 	private static volatile String autoDetectSuppressedContext;
 	private static volatile ContextProvider contextProvider;
-	private static volatile WorldContext externalContext;
 
 	private SeedAtlasClientState() {
 	}
@@ -85,18 +87,64 @@ public final class SeedAtlasClientState {
 		return config;
 	}
 
-	public static Path configPath() {
-		return CONFIG_PATH;
-	}
-
+	/** The base seed: the Overworld's, and every dimension's that has no seed of its own. */
 	public static OptionalLong activeSeed() {
 		initialize();
-		return activeSeed;
+		SeedAtlasConfig.SeedProfile profile = activeProfile;
+		return profile == null ? OptionalLong.empty() : seedOf(profile.base());
 	}
 
-	public static Optional<String> activeSeedInput() {
+	/** The seed that generates {@code dimension} in the active context. */
+	public static OptionalLong activeSeed(final Dimension dimension) {
 		initialize();
-		return Optional.ofNullable(activeSeedInput);
+		SeedAtlasConfig.SeedProfile profile = activeProfile;
+		return profile == null ? OptionalLong.empty() : seedOf(profile.seedFor(dimension));
+	}
+
+	/** True when at least one dimension of the active context has a seed. */
+	public static boolean hasActiveSeed() {
+		initialize();
+		SeedAtlasConfig.SeedProfile profile = activeProfile;
+		return profile != null && !profile.isEmpty();
+	}
+
+	public static Optional<SeedAtlasConfig.SeedProfile> activeProfile() {
+		initialize();
+		return Optional.ofNullable(activeProfile);
+	}
+
+	private static OptionalLong seedOf(final SeedAtlasConfig.SeedValue value) {
+		return value == null ? OptionalLong.empty() : OptionalLong.of(value.seed());
+	}
+
+	/** The Minecraft version the active world or server generates with; the running game's by default. */
+	public static GameVersion activeGameVersion() {
+		initialize();
+		return GameVersion.parse(config.gameVersion(activeContext.key())).orElse(GameVersion.NEWEST);
+	}
+
+	/** True when the active context follows the running game's version instead of a chosen one. */
+	public static boolean gameVersionAutomatic() {
+		initialize();
+		return config.gameVersion(activeContext.key()) == null;
+	}
+
+	/**
+	 * Selects the version the active world or server generates with, e.g. a 26.2 server joined from
+	 * 26.2; {@code null} follows the running game again.
+	 */
+	public static void setGameVersion(final GameVersion version) {
+		initialize();
+		refreshContext(Minecraft.getInstance());
+		WorldContext context = activeContext;
+		if (context.key().isEmpty()) {
+			throw new IllegalStateException("No active world or server context");
+		}
+		// An explicit choice stays put when a later mod update moves the automatic version on.
+		String stored = version == null ? null : version.name();
+		if (config.setGameVersion(context.key(), stored)) {
+			saveAndPublish(ChangeReason.WORLD_GENERATION);
+		}
 	}
 
 	public static String currentContextKey() {
@@ -129,29 +177,26 @@ public final class SeedAtlasClientState {
 			if (contextChanged && !nextContext.key().equals(autoDetectSuppressedContext)) {
 				autoDetectSuppressedContext = null;
 			}
-			if (!contextChanged && (activeSeed.isPresent() || detectedSingleplayerSeed.isEmpty())) {
+			SeedAtlasConfig.SeedProfile current = activeProfile;
+			if (!contextChanged && (current != null && current.base() != null || detectedSingleplayerSeed.isEmpty())) {
 				return;
 			}
 
 			activeContext = nextContext;
 			if (nextContext.key().isEmpty()) {
-				activeSeed = OptionalLong.empty();
-				activeSeedInput = null;
+				activeProfile = null;
 			} else {
 				SeedAtlasConfig.SeedProfile profile = config.seedProfile(nextContext.key());
-				if (detectedSingleplayerSeed.isPresent() && (profile == null || profile.seed() != detectedSingleplayerSeed.getAsLong())) {
+				if (detectedSingleplayerSeed.isPresent() && (profile == null || profile.base() == null
+					|| profile.base().seed() != detectedSingleplayerSeed.getAsLong())) {
 					long seed = detectedSingleplayerSeed.getAsLong();
-					profile = new SeedAtlasConfig.SeedProfile(Long.toString(seed), seed, nextContext.label());
+					SeedAtlasConfig.SeedValue base = new SeedAtlasConfig.SeedValue(Long.toString(seed), seed);
+					profile = profile == null
+						? new SeedAtlasConfig.SeedProfile(base, null, null, nextContext.label())
+						: new SeedAtlasConfig.SeedProfile(base, profile.nether(), profile.end(), nextContext.label());
 					profileChanged = config.putSeedProfile(nextContext.key(), profile);
 				}
-
-				if (profile == null) {
-					activeSeed = OptionalLong.empty();
-					activeSeedInput = null;
-				} else {
-					activeSeed = OptionalLong.of(profile.seed());
-					activeSeedInput = profile.input();
-				}
+				activeProfile = profile;
 			}
 		}
 
@@ -161,20 +206,6 @@ public final class SeedAtlasClientState {
 		if (contextChanged || profileChanged) {
 			publish(ChangeReason.CONTEXT);
 		}
-	}
-
-	/**
-	 * Overrides fallback server/world identification. Xaero integration can set a
-	 * map-specific context directly and clear it when its session closes.
-	 */
-	public static void setExternalContext(final WorldContext context) {
-		externalContext = context;
-		refreshContext(Minecraft.getInstance());
-	}
-
-	public static void clearExternalContext() {
-		externalContext = null;
-		refreshContext(Minecraft.getInstance());
 	}
 
 	public static void setContextProvider(final ContextProvider provider) {
@@ -201,13 +232,76 @@ public final class SeedAtlasClientState {
 		}
 
 		synchronized (LOCK) {
-			config.putSeedProfile(context.key(), new SeedAtlasConfig.SeedProfile(normalized, seed, context.label()));
-			activeSeed = OptionalLong.of(seed);
-			activeSeedInput = normalized;
+			SeedAtlasConfig.SeedValue value = new SeedAtlasConfig.SeedValue(normalized, seed);
+			SeedAtlasConfig.SeedProfile existing = config.seedProfile(context.key());
+			SeedAtlasConfig.SeedProfile profile = existing == null
+				? new SeedAtlasConfig.SeedProfile(value, null, null, context.label())
+				: new SeedAtlasConfig.SeedProfile(value, existing.nether(), existing.end(), context.label());
+			config.putSeedProfile(context.key(), profile);
+			activeProfile = profile;
 			autoDetectSuppressedContext = null;
 		}
 		saveAndPublish(ChangeReason.SEED);
 		return seed;
+	}
+
+	/**
+	 * Gives the Nether or End its own seed in the active context; the base seed keeps
+	 * generating the other dimensions.
+	 */
+	public static long setDimensionSeed(final Dimension dimension, final String input) {
+		initialize();
+		if (dimension == Dimension.OVERWORLD) {
+			throw new IllegalArgumentException("The Overworld uses the base seed");
+		}
+		String normalized = Objects.requireNonNull(input, "input").trim();
+		long seed = parseSeed(normalized);
+		refreshContext(Minecraft.getInstance());
+		WorldContext context = activeContext;
+		if (context.key().isEmpty()) {
+			throw new IllegalStateException("No active world or server context");
+		}
+
+		synchronized (LOCK) {
+			SeedAtlasConfig.SeedProfile existing = config.seedProfile(context.key());
+			SeedAtlasConfig.SeedProfile profile = (existing == null
+				? new SeedAtlasConfig.SeedProfile(null, null, null, context.label())
+				: existing).withDimension(dimension, new SeedAtlasConfig.SeedValue(normalized, seed));
+			config.putSeedProfile(context.key(), profile);
+			activeProfile = profile;
+		}
+		saveAndPublish(ChangeReason.SEED);
+		return seed;
+	}
+
+	/** Removes the own seed of the Nether or End, which then follows the base seed again. */
+	public static boolean clearDimensionSeed(final Dimension dimension) {
+		initialize();
+		if (dimension == Dimension.OVERWORLD) {
+			throw new IllegalArgumentException("The Overworld uses the base seed");
+		}
+		refreshContext(Minecraft.getInstance());
+		WorldContext context = activeContext;
+		if (context.key().isEmpty()) {
+			return false;
+		}
+
+		synchronized (LOCK) {
+			SeedAtlasConfig.SeedProfile existing = config.seedProfile(context.key());
+			if (existing == null || existing.ownSeed(dimension) == null) {
+				return false;
+			}
+			SeedAtlasConfig.SeedProfile profile = existing.withDimension(dimension, null);
+			if (profile.isEmpty()) {
+				config.removeSeedProfile(context.key());
+				activeProfile = null;
+			} else {
+				config.putSeedProfile(context.key(), profile);
+				activeProfile = profile;
+			}
+		}
+		saveAndPublish(ChangeReason.SEED);
+		return true;
 	}
 
 	public static boolean clearSeed() {
@@ -221,8 +315,7 @@ public final class SeedAtlasClientState {
 		boolean changed;
 		synchronized (LOCK) {
 			changed = config.removeSeedProfile(context.key());
-			activeSeed = OptionalLong.empty();
-			activeSeedInput = null;
+			activeProfile = null;
 			autoDetectSuppressedContext = context.key();
 		}
 		if (changed) {
@@ -247,15 +340,30 @@ public final class SeedAtlasClientState {
 		}
 	}
 
+	public static void setTerrainStyle(final boolean enabled) {
+		if (config().setTerrainStyle(enabled)) {
+			saveAndPublish(ChangeReason.DISPLAY);
+		}
+	}
+
+	public static void setOverlayExplored(final boolean enabled) {
+		if (config().setOverlayExplored(enabled)) {
+			saveAndPublish(ChangeReason.DISPLAY);
+		}
+	}
+
 	public static void setStructuresEnabled(final boolean enabled) {
 		if (config().setStructuresEnabled(enabled)) {
 			saveAndPublish(ChangeReason.MARKERS);
 		}
 	}
 
-	public static void setHideCompletedStructures(boolean hide) {
-		// Read by the marker renderer every frame; no terrain/structure rescan needed.
-		if (config().setHideCompletedStructures(hide)) save();
+	/**
+	 * Read by the marker renderer every frame, so a slider can preview it live; no rescan is
+	 * needed. Pass {@code persist} once the value settles to write the config.
+	 */
+	public static void setCompletedOpacity(int opacity, boolean persist) {
+		if (config().setCompletedOpacity(opacity) && persist) save();
 	}
 
 	/** Marker size is read by the marker renderer every frame, so no rescan is needed. */
@@ -293,6 +401,21 @@ public final class SeedAtlasClientState {
 
 	public static void setStructureCompleted(SeedAtlasConfig.StructureKey key, boolean completed) {
 		if (config().setCompleted(key, completed)) save();
+	}
+
+	/** Completed structures of the active world or server, of one marker type or ({@code null}) all. */
+	public static int completedCount(final MarkerType type) {
+		String world = currentContextKey();
+		return world.isEmpty() ? 0 : config().completedCount(world, type == null ? null : type.id());
+	}
+
+	/** Marks the active world's completed structures of one type or ({@code null}) all as not completed. */
+	public static int resetCompleted(final MarkerType type) {
+		String world = currentContextKey();
+		if (world.isEmpty()) return 0;
+		int removed = config().resetCompleted(world, type == null ? null : type.id());
+		if (removed > 0) save();
+		return removed;
 	}
 
 	public static void setBiomeResolution(final int resolution) {
@@ -337,16 +460,6 @@ public final class SeedAtlasClientState {
 		}
 	}
 
-	public static void setYFor(final ResourceKey<Level> dimension, final int y) {
-		if (Level.NETHER.equals(dimension)) {
-			setNetherY(y);
-		} else if (Level.END.equals(dimension)) {
-			setEndY(y);
-		} else {
-			setOverworldY(y);
-		}
-	}
-
 	public static void setMarkerEnabled(final String markerId, final boolean enabled) {
 		if (config().setMarkerEnabled(markerId, enabled)) {
 			saveAndPublish(ChangeReason.MARKERS);
@@ -355,9 +468,13 @@ public final class SeedAtlasClientState {
 
 	public static void openSettings(final Screen parent) {
 		initialize();
-		// Pause native/GPU work immediately so opening settings never keeps the
-		// map pipeline spinning underneath the menu.
-		org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration.setHeavyWorkPaused(true);
+		if (!SeedAtlasXaero.xaeroCompatible()) {
+			// The settings drive the Xaero integration, which stays off for this Xaero version.
+			if (Minecraft.getInstance().player != null) {
+				Minecraft.getInstance().player.sendSystemMessage(SeedAtlasXaero.incompatibleMessage());
+			}
+			return;
+		}
 		Minecraft.getInstance().gui.setScreen(new SeedAtlasSettingsScreen(parent));
 	}
 
@@ -392,14 +509,7 @@ public final class SeedAtlasClientState {
 	}
 
 	private static void loadActiveProfileLocked() {
-		if (activeContext.key().isEmpty()) {
-			activeSeed = OptionalLong.empty();
-			activeSeedInput = null;
-			return;
-		}
-		SeedAtlasConfig.SeedProfile profile = config.seedProfile(activeContext.key());
-		activeSeed = profile == null ? OptionalLong.empty() : OptionalLong.of(profile.seed());
-		activeSeedInput = profile == null ? null : profile.input();
+		activeProfile = activeContext.key().isEmpty() ? null : config.seedProfile(activeContext.key());
 	}
 
 	private static void saveAndPublish(final ChangeReason reason) {
@@ -419,11 +529,6 @@ public final class SeedAtlasClientState {
 	}
 
 	private static WorldContext resolveContext(final Minecraft minecraft) {
-		WorldContext override = externalContext;
-		if (override != null) {
-			return override;
-		}
-
 		ContextProvider provider = contextProvider;
 		if (provider != null) {
 			try {
@@ -445,7 +550,7 @@ public final class SeedAtlasClientState {
 
 		ServerData server = minecraft.getCurrentServer();
 		if (server != null && server.ip != null && !server.ip.isBlank()) {
-			String address = server.ip.trim().toLowerCase(java.util.Locale.ROOT);
+			String address = server.ip.trim().toLowerCase(Locale.ROOT);
 			String label = server.name == null || server.name.isBlank() ? server.ip : server.name + " (" + server.ip + ")";
 			return new WorldContext("server:" + digest(address), label);
 		}
