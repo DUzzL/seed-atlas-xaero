@@ -90,6 +90,6 @@ public final class BiomeHighlightScreen extends SeedAtlasScreen {
     @Override
     public void onClose() {
         SeedAtlasClientState.save();
-        this.minecraft.gui.setScreen(this.parent);
+        this.minecraft.setScreen(this.parent);
     }
 }

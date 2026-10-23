@@ -83,7 +83,7 @@ public final class MarkerSettingsScreen extends SeedAtlasScreen {
 		Component message = type == null
 			? Component.translatable("screen.seedatlas_xaero.reset_completed.all", count, world)
 			: Component.translatable("screen.seedatlas_xaero.reset_completed.type", count, type.displayName(), world);
-		this.minecraft.gui.setScreen(new ConfirmResetScreen(this,
+		this.minecraft.setScreen(new ConfirmResetScreen(this,
 			Component.translatable("screen.seedatlas_xaero.reset_completed.title"), message,
 			() -> SeedAtlasClientState.resetCompleted(type)));
 	}
@@ -97,7 +97,7 @@ public final class MarkerSettingsScreen extends SeedAtlasScreen {
 	public void onClose() {
 		SeedAtlasClientState.save();
 		// Parent is the main Seed Atlas settings screen; keep heavy work paused.
-		this.minecraft.gui.setScreen(this.parent);
+		this.minecraft.setScreen(this.parent);
 	}
 
 	/** Fades completed structures from 100 % (like any marker) down to 0 % (hidden), previewed live on the map. */

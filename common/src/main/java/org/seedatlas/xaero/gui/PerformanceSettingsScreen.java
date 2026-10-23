@@ -65,7 +65,7 @@ public final class PerformanceSettingsScreen extends SeedAtlasScreen {
 	public void onClose() {
 		SeedAtlasClientState.save();
 		// Parent is the main Seed Atlas settings screen; keep heavy work paused.
-		this.minecraft.gui.setScreen(this.parent);
+		this.minecraft.setScreen(this.parent);
 	}
 
 	private static int nextValue(final int current, final int[] values) {

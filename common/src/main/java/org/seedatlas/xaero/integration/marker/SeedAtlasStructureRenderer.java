@@ -7,7 +7,7 @@ import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.integration.icon.CompletedBadge;
 import org.seedatlas.xaero.integration.icon.StructureIcons;
-import xaero.lib.client.graphics.XaeroBufferProvider;
+import net.minecraft.client.renderer.MultiBufferSource.BufferSource;
 import xaero.map.element.MapElementGraphics;
 import xaero.map.element.render.ElementRenderInfo;
 import xaero.map.element.render.ElementRenderLocation;
@@ -42,7 +42,7 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
     @Override
     public void preRender(
         ElementRenderInfo renderInfo,
-        XaeroBufferProvider xaeroBufferProvider,
+        BufferSource xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider,
         boolean shadow
     ) {
@@ -74,7 +74,7 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
     @Override
     public void postRender(
         ElementRenderInfo renderInfo,
-        XaeroBufferProvider xaeroBufferProvider,
+        BufferSource xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider,
         boolean shadow
     ) {
@@ -92,7 +92,7 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
         double partialY,
         ElementRenderInfo renderInfo,
         MapElementGraphics graphics,
-        XaeroBufferProvider xaeroBufferProvider,
+        BufferSource xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider
     ) {
     }
@@ -107,7 +107,7 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
         double partialY,
         ElementRenderInfo renderInfo,
         MapElementGraphics graphics,
-        XaeroBufferProvider xaeroBufferProvider,
+        BufferSource xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider
     ) {
         PoseStack pose = graphics.pose();

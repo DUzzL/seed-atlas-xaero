@@ -41,7 +41,6 @@ final class BiomeSurfacePalette {
         // Texture factors are the average brightness of each leaf texture (oak 0.565, birch 0.51, ...).
         Map.entry(Biomes.FOREST, Canopy.foliage(0.60F, 0.55F)),
         Map.entry(Biomes.FLOWER_FOREST, Canopy.foliage(0.60F, 0.35F)),
-        Map.entry(Biomes.DAPPLED_FOREST, Canopy.foliage(0.60F, 0.45F)),
         Map.entry(Biomes.WINDSWEPT_FOREST, Canopy.foliage(0.55F, 0.45F)),
         Map.entry(Biomes.DARK_FOREST, Canopy.foliage(0.50F, 0.90F)),
         Map.entry(Biomes.BIRCH_FOREST, new Canopy(FoliageColor.FOLIAGE_BIRCH & 0xFFFFFF, 0.62F, 0.55F)),

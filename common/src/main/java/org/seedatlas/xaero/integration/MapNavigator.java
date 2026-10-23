@@ -27,7 +27,7 @@ public final class MapNavigator {
         pendingWaypoint = target;
         waypointTries = 0;
         SeedAtlasXaeroIntegration.setHeavyWorkPaused(false);
-        mc.gui.setScreen(new GuiMap(null, null, session.getMapProcessor(), mc.getCameraEntity()));
+        mc.setScreen(new GuiMap(null, null, session.getMapProcessor(), mc.getCameraEntity()));
         return true;
     }
 

@@ -19,7 +19,7 @@ import org.seedatlas.xaero.nativeapi.WorldType;
 /** Manual Java 25 FFM smoke/concurrency test for native ABI 6 (4/5 accepted with fewer features). */
 public final class BiomeAreaFfmTest {
     public static void main(String[] args) throws Exception {
-        assert SeedAtlasNative.status().available();
+        assert SeedAtlasNative.status().available() : SeedAtlasNative.status();
         // Checked-in macOS libraries may still be ABI 4 (biomes only) until CI rebuilds them;
         // SAX_REQUIRE_HEIGHTS=1 (freshly built libraries) demands ABI 6.
         boolean abi6 = SeedAtlasNative.engineVersion().contains("ABI 6");
@@ -28,7 +28,7 @@ public final class BiomeAreaFfmTest {
         assert SeedAtlasNative.engineVersion().contains("26.3") : SeedAtlasNative.engineVersion();
         gameVersions();
         boolean heights;
-        try (SeedAtlasNative camp = SeedAtlasNative.open(14L, WorldType.NORMAL)) {
+        try (SeedAtlasNative camp = SeedAtlasNative.open(14L, WorldType.NORMAL, new GameVersion("26.3", "26.3"))) {
             heights = camp.supportsHeights();
             var special = camp.structures(StructureType.ABANDONED_CAMP,
                 new BlockBox(-832, -2128, -832, -2128), 8, true).positions();
@@ -39,7 +39,7 @@ public final class BiomeAreaFfmTest {
         if (abi6) {
             // Independent 26.3 vanilla-density fixture at the reported player's column:
             // Full cave mode skips the roof from 127, not the biome sampling layer 64.
-            try (SeedAtlasNative reported = SeedAtlasNative.open(2842062689604764280L, WorldType.NORMAL)) {
+            try (SeedAtlasNative reported = SeedAtlasNative.open(2842062689604764280L, WorldType.NORMAL, new GameVersion("26.3", "26.3"))) {
                 assert reported.netherFloorArea(-170, 14, 64, 1, 1, 1)[0] == 59.0F;
                 assert reported.netherFloorArea(-170, 14, 127, 1, 1, 1)[0] == 100.0F;
                 assert reported.netherFloorArea(-170, -18, 64, 1, 1, 1)[0] == 0.0F;
@@ -102,20 +102,29 @@ public final class BiomeAreaFfmTest {
                     }
                 }
             }
-            var dappled = atlas.biomeAt(Dimension.OVERWORLD, -1184, 100, 1248);
-            assert dappled.id() == 188;
-            assert dappled.name().equals("minecraft:dappled_forest");
-            assert dappled.argb() == 0xffdf6827;
-            var camps = atlas.structures(StructureType.ABANDONED_CAMP,
-                new BlockBox(-512, 416, -512, 416), 8, true).positions();
-            assert camps.size() == 1;
-            assert camps.getFirst().campBiomeId() == 4;
-            assert !camps.getFirst().hasSpecialLoot();
-            var unchecked = atlas.structures(StructureType.ABANDONED_CAMP,
-                new BlockBox(288, 32, 288, 32), 8, false).positions();
-            assert unchecked.size() == 1;
-            assert unchecked.getFirst().campBiomeId() == -1;
-            assert !unchecked.getFirst().hasSpecialLoot();
+            // These upstream fixtures belong to 26.3, which the retained engine still supports.
+            try (var fixture = SeedAtlasNative.open(8371904829L, WorldType.NORMAL,
+                    new GameVersion("26.3", "26.3"))) {
+                var dappled = fixture.biomeAt(Dimension.OVERWORLD, -1184, 100, 1248);
+                assert dappled.id() == 188;
+                assert dappled.name().equals("minecraft:dappled_forest");
+                assert dappled.argb() == 0xffdf6827;
+                var camps = fixture.structures(StructureType.ABANDONED_CAMP,
+                    new BlockBox(-512, 416, -512, 416), 8, true).positions();
+                assert camps.size() == 1;
+                assert camps.getFirst().campBiomeId() == 4;
+                assert !camps.getFirst().hasSpecialLoot();
+                var unchecked = fixture.structures(StructureType.ABANDONED_CAMP,
+                    new BlockBox(288, 32, 288, 32), 8, false).positions();
+                assert unchecked.size() == 1;
+                assert unchecked.getFirst().campBiomeId() == -1;
+                assert !unchecked.getFirst().hasSpecialLoot();
+            }
+            // The backport's default context must not produce the newer biome or structures.
+            assert atlas.gameVersion().equals(GameVersion.NEWEST);
+            assert atlas.biomeAt(Dimension.OVERWORLD, -1184, 100, 1248).id() != 188;
+            assert atlas.structures(StructureType.ABANDONED_CAMP,
+                new BlockBox(-512, 416, -512, 416), 8, true).positions().isEmpty();
             BiomeRegion exact = atlas.biomeArea(
                 Dimension.OVERWORLD, -517, 39, 255, 1, 96, 80);
             for (int z = 0; z < 80; z += 7) {
@@ -201,6 +210,8 @@ public final class BiomeAreaFfmTest {
 
     /** Servers on an older release: libraries with SAX_CAP_MC_VERSIONS generate any listed version. */
     private static void gameVersions() {
+        assert GameVersion.NEWEST.name().equals("26.1.2");
+        assert GameVersion.parse("26.3").isEmpty();
         assert SeedAtlasNative.supports(GameVersion.NEWEST);
         if (!SeedAtlasNative.supports(GameVersion.ALL.getLast())) {
             // Checked-in libraries predating version selection only generate their own release.

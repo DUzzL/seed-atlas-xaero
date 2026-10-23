@@ -130,8 +130,8 @@ public final class SeedAtlasClientState {
 	}
 
 	/**
-	 * Selects the version the active world or server generates with, e.g. a 26.2 server joined from
-	 * 26.3; {@code null} follows the running game again.
+	 * Selects the version the active world or server generates with, e.g. a 26.1 server joined from
+	 * 26.1.2; {@code null} follows the running game again.
 	 */
 	public static void setGameVersion(final GameVersion version) {
 		initialize();
@@ -475,7 +475,7 @@ public final class SeedAtlasClientState {
 			}
 			return;
 		}
-		Minecraft.getInstance().gui.setScreen(new SeedAtlasSettingsScreen(parent));
+		Minecraft.getInstance().setScreen(new SeedAtlasSettingsScreen(parent));
 	}
 
 	public static void save() {

@@ -28,10 +28,9 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
-import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
 import org.seedatlas.xaero.integration.biome.OverworldTerrainSampler.SurfaceGrid;
 
-/** Standalone vanilla 26.3 base-column checks; no game, world or chunks are constructed. */
+/** Standalone vanilla 26.1.2 base-column checks; no game, world or chunks are constructed. */
 public final class OverworldTerrainSamplerTest {
     private static final long SEED = 2842062689604764280L;
     private static HolderLookup.Provider lookup;
@@ -42,8 +41,8 @@ public final class OverworldTerrainSamplerTest {
         invalidAreas();
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        check(SharedConstants.getCurrentVersion().name().equals("26.3"), "Requires Minecraft 26.3");
-        lookup = VanillaRegistries.createWorldLookup();
+        check(SharedConstants.getCurrentVersion().name().equals("26.1.2"), "Requires Minecraft 26.1.2");
+        lookup = VanillaRegistries.createLookup();
         biomes = MultiNoiseBiomeSource.createFromPreset(lookup.lookupOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
                 .getOrThrow(MultiNoiseBiomeSourceParameterLists.OVERWORLD));
         baseColumnParity();
@@ -107,7 +106,7 @@ public final class OverworldTerrainSamplerTest {
         var settings = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(
                 large ? NoiseGeneratorSettings.LARGE_BIOMES : NoiseGeneratorSettings.OVERWORLD);
         return new Reference(new NoiseBasedChunkGenerator(biomes, settings),
-                RandomState.create(lookup.lookupOrThrow(Registries.NOISE), seed, settings.value()),
+                RandomState.create(settings.value(), lookup.lookupOrThrow(Registries.NOISE), seed),
                 LevelHeightAccessor.create(settings.value().noiseSettings().minY(), settings.value().noiseSettings().height()));
     }
 
@@ -127,12 +126,12 @@ public final class OverworldTerrainSamplerTest {
         }
         // Find named biome categories independently of the implementation, then compare their real columns.
         var reference = reference(SEED, false);
-        var resolver = biomes.createResolver(reference.state.createClimateSampler(SamplerContext.EMPTY_UNCACHED));
+        var sampler = reference.state.sampler();
         var found = new LinkedHashMap<String, int[]>();
         for (int attempt = 0; attempt < 20000 && found.size() < 4; ++attempt) {
             int x = random.nextInt(20001) - 10000;
             int z = random.nextInt(20001) - 10000;
-            var biome = resolver.getNoiseBiome(x >> 2, 16, z >> 2);
+            var biome = biomes.getNoiseBiome(x >> 2, 16, z >> 2, sampler);
             String id = biome.unwrapKey().orElseThrow().identifier().getPath();
             String category = id.contains("ocean") ? "ocean" : id.contains("beach") ? "beach"
                     : id.contains("swamp") ? "swamp" : id.contains("peaks") ? "mountains" : null;
@@ -165,8 +164,8 @@ public final class OverworldTerrainSamplerTest {
         check(area.heights()[index] == baseHeight - 1, "Base-height first-air conversion at " + x + "," + z);
         // OCEAN_FLOOR_WG needs datapack block tags; this offline bootstrap checks solid column blocks directly.
         if (!column.getBlock(top).getFluidState().isEmpty()) {
-            var resolver = biomes.createResolver(reference.state.createClimateSampler(SamplerContext.EMPTY_UNCACHED));
-            int waterColor = resolver.getNoiseBiome(x >> 2, top >> 2, z >> 2).value().getWaterColor() & 0xffffff;
+            var sampler = reference.state.sampler();
+            int waterColor = biomes.getNoiseBiome(x >> 2, top >> 2, z >> 2, sampler).value().getWaterColor() & 0xffffff;
             check(area.colors()[index] == BiomeSurfacePalette.water(waterColor),
                     "Actual base fluid uses surface-biome water tint");
         }
@@ -359,7 +358,7 @@ public final class OverworldTerrainSamplerTest {
     }
 
     private static void benchmark() throws Exception {
-        System.out.printf("Sampler benchmark: MC=26.3 seed=%d largeBiomes=false size=258x258"
+        System.out.printf("Sampler benchmark: MC=26.1.2 seed=%d largeBiomes=false size=258x258"
                         + " Java=%s arch=%s cache=%d tiles contexts=2%n",
                 SEED, System.getProperty("java.version"), System.getProperty("os.arch"), constant("MAX_CACHED_TILES"));
         // Spawn coast and ocean, then the frozen peaks found by the parity check.

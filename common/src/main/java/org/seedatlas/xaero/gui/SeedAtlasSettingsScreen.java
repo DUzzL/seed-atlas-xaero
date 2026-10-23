@@ -43,7 +43,7 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 
 		this.addRenderableWidget(Button.builder(worldGenerationMessage(), button -> {
 			this.commitValues();
-			this.minecraft.gui.setScreen(new WorldGenerationScreen(this));
+			this.minecraft.setScreen(new WorldGenerationScreen(this));
 		}).bounds(left + halfWidth + gap, 34, halfWidth, 20)
 			.tooltip(Tooltip.create(Component.translatable("tooltip.seedatlas_xaero.world_generation"))).build());
 
@@ -74,12 +74,12 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.markers"), button -> {
 			this.commitValues();
-			this.minecraft.gui.setScreen(new MarkerSettingsScreen(this));
+			this.minecraft.setScreen(new MarkerSettingsScreen(this));
 		}).bounds(left + halfWidth + gap, 125, halfWidth, 20).build());
 
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.performance"), button -> {
 			this.commitValues();
-			this.minecraft.gui.setScreen(new PerformanceSettingsScreen(this));
+			this.minecraft.setScreen(new PerformanceSettingsScreen(this));
 		}).bounds(left, 150, halfWidth, 20).build());
 
 		boolean terrainAvailable = SeedAtlasClientState.activeGameVersion().hasTerrain();
@@ -100,16 +100,16 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 		int thirdWidth = (contentWidth - gap * 2) / 3;
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.biome_highlights"), button -> {
 			this.commitValues();
-			this.minecraft.gui.setScreen(new BiomeHighlightScreen(this));
+			this.minecraft.setScreen(new BiomeHighlightScreen(this));
 		}).bounds(left, 175, thirdWidth, 20).build());
 
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.go_biome"), button -> {
 			this.commitValues();
-			this.minecraft.gui.setScreen(new NearestScreen(this, true));
+			this.minecraft.setScreen(new NearestScreen(this, true));
 		}).bounds(left + thirdWidth + gap, 175, thirdWidth, 20).build());
 		this.addRenderableWidget(Button.builder(Component.translatable("options.seedatlas_xaero.go_structure"), button -> {
 			this.commitValues();
-			this.minecraft.gui.setScreen(new NearestScreen(this, false));
+			this.minecraft.setScreen(new NearestScreen(this, false));
 		}).bounds(left + (thirdWidth + gap) * 2, 175, contentWidth - (thirdWidth + gap) * 2, 20).build());
 
 		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
@@ -160,7 +160,7 @@ public final class SeedAtlasSettingsScreen extends SeedAtlasScreen {
 		// Closing the main settings also resumes after /seedatlas settings,
 		// whose parent is null. Nested settings return without calling this.
 		SeedAtlasXaeroIntegration.setHeavyWorkPaused(false);
-		this.minecraft.gui.setScreen(this.parent);
+		this.minecraft.setScreen(this.parent);
 	}
 
 	private void commitValues() {

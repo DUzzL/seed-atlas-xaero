@@ -139,6 +139,10 @@ final class NativeBindings {
                 + EXPECTED_ABI
                 + " but library provides " + abi);
         }
+        // Legacy libraries always create a 26.3 context; backports must select their own release.
+        if (!bindings.supportsMcVersions()) {
+            throw new NativeException("This backport requires a native library with Minecraft version selection");
+        }
         return bindings;
     }
 

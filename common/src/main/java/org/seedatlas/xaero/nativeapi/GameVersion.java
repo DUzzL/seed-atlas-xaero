@@ -13,8 +13,6 @@ import java.util.Optional;
 public record GameVersion(String name, String first) {
     /** Newest first. Every boundary is a version where the engine's generation changes. */
     public static final List<GameVersion> ALL = List.of(
-        new GameVersion("26.3", "26.3"),
-        new GameVersion("26.2", "26.2"),
         new GameVersion("26.1.2", "1.21.5"),
         new GameVersion("1.21.4", "1.21.4"),
         new GameVersion("1.21.3", "1.21.2"),

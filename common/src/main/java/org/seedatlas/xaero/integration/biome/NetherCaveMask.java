@@ -1,21 +1,32 @@
 package org.seedatlas.xaero.integration.biome;
 
 import java.util.LinkedHashMap;
+import java.util.function.Function;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.FixedBiomeSource;
-import net.minecraft.world.level.chunk.CarverOutput;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.chunk.CarvingMask;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.chunk.UpgradeData;
+import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
-import net.minecraft.world.level.levelgen.WorldGenerationContext;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
-import net.minecraft.world.level.levelgen.carver.WorldCarver;
+import net.minecraft.world.level.levelgen.carver.CarvingContext;
+import net.minecraft.world.level.levelgen.carver.CaveCarverConfiguration;
+import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
+import net.minecraft.world.level.levelgen.carver.NetherWorldCarver;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 
 /** Vanilla Nether carver geometry from the seed alone; never loads or generates world chunks. */
 public final class NetherCaveMask {
@@ -76,13 +87,10 @@ public final class NetherCaveMask {
         long[] mask = new long[16 * 16 * 2];
         var target = new ChunkPos(key.chunkX, key.chunkZ);
         var random = new WorldgenRandom(new LegacyRandomSource(0));
-        var output = new CarverOutput() {
-            @Override public int minY() { return 1; }
-            @Override public int maxY() { return 120; }
-            @Override public void carve(int x, int y, int z) {
-                mask[((z & 15) * 16 + (x & 15)) * 2 + (y >>> 6)] |= 1L << (y & 63);
-            }
-        };
+        // Older carvers need chunk coordinates. This empty shell has zero sections;
+        // the recording carver never reads blocks, allocates terrain or loads a world.
+        var shell = new ProtoChunk(target, UpgradeData.EMPTY, LevelHeightAccessor.create(0, 0), null, null);
+        var output = new CarvingMask(128, 0);
         for (int dx = -8; dx <= 8; ++dx) {
             for (int dz = -8; dz <= 8; ++dz) {
                 var source = new ChunkPos(key.chunkX + dx, key.chunkZ + dz);
@@ -90,8 +98,19 @@ public final class NetherCaveMask {
                 for (var holder : Vanilla.CARVERS) {
                     var carver = holder.value();
                     random.setLargeFeatureSeed(key.seed + index++, source.x(), source.z());
-                    if (carver.isStartChunk(random)) carver.carve(Vanilla.CONTEXT, random, target, source, output);
+                    if (carver.isStartChunk(random)) {
+                        if (!(carver.worldCarver() instanceof NetherWorldCarver)
+                                || !(carver.config() instanceof CaveCarverConfiguration configuration)) {
+                            throw new IllegalStateException("Unsupported built-in Nether carver");
+                        }
+                        Vanilla.RECORDER.carve(Vanilla.CONTEXT, configuration, shell, null, random, null, source, output);
+                    }
                 }
+            }
+        }
+        for (int z = 0; z < 16; ++z) for (int x = 0; x < 16; ++x) {
+            for (int y = 1; y <= 120; ++y) {
+                if (output.get(x, y, z)) mask[(z * 16 + x) * 2 + (y >>> 6)] |= 1L << (y & 63);
             }
         }
         return mask;
@@ -100,14 +119,23 @@ public final class NetherCaveMask {
     private record Key(long seed, int chunkX, int chunkZ) { }
 
     private static final class Vanilla {
-        private static final HolderLookup.Provider LOOKUP = VanillaRegistries.createWorldLookup();
+        private static final HolderLookup.Provider LOOKUP = VanillaRegistries.createLookup();
         // All five built-in Nether biomes share these carvers; no live biome source is needed.
-        private static final Iterable<Holder<WorldCarver>> CARVERS = LOOKUP.lookupOrThrow(Registries.BIOME)
+        private static final Iterable<Holder<ConfiguredWorldCarver<?>>> CARVERS = LOOKUP.lookupOrThrow(Registries.BIOME)
                 .getOrThrow(Biomes.NETHER_WASTES).value().getGenerationSettings().getCarvers();
-        private static final WorldGenerationContext CONTEXT = new WorldGenerationContext(
+        private static final CarvingContext CONTEXT = new CarvingContext(
                 new NoiseBasedChunkGenerator(new FixedBiomeSource(LOOKUP.lookupOrThrow(Registries.BIOME)
                         .getOrThrow(Biomes.NETHER_WASTES)),
                         LOOKUP.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(NoiseGeneratorSettings.NETHER)),
-                LevelHeightAccessor.create(0, 256));
+                RegistryAccess.EMPTY, LevelHeightAccessor.create(0, 256), null, null, null);
+        private static final NetherWorldCarver RECORDER = new NetherWorldCarver(CaveCarverConfiguration.CODEC) {
+            @Override protected boolean carveBlock(CarvingContext context, CaveCarverConfiguration configuration,
+                    ChunkAccess chunk, Function<BlockPos, Holder<Biome>> biomeGetter, CarvingMask mask,
+                    BlockPos.MutableBlockPos position, BlockPos.MutableBlockPos helper, Aquifer aquifer,
+                    MutableBoolean hasGrass) {
+                // WorldCarver has already recorded this voxel in the CarvingMask.
+                return true;
+            }
+        };
     }
 }

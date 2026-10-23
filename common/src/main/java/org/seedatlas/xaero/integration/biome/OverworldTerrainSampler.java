@@ -20,11 +20,11 @@ import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.NoiseChunk;
+import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
-import net.minecraft.world.level.levelgen.densityfunction.DensityVolume;
-import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
+import net.minecraft.world.level.block.state.BlockState;
 
 /** Seed-only vanilla base terrain; never reads a world, constructs a chunk, or adds vegetation. */
 public final class OverworldTerrainSampler {
@@ -32,9 +32,6 @@ public final class OverworldTerrainSampler {
     private static final int MAX_DIMENSION = 262;
     // 16x16 samples each, ~3 KB: enough to keep a dozen detailed map tiles for zooming and panning back.
     private static final int MAX_CACHED_TILES = 4096;
-    // Density is sampled top-down in slabs of this many blocks, a multiple of the 8-block noise cell,
-    // and stops once every column has its floor; columns rarely need the deep half of the world.
-    private static final int SLAB_HEIGHT = 64;
     // The Overworld top slide fixes density to -0.078125 from 64 blocks below the world top up, and
     // fluid only fills air below sea level, so every block from there up is air.
     private static final int TOP_SLIDE_END_DEPTH = 64;
@@ -175,7 +172,7 @@ public final class OverworldTerrainSampler {
         private Context(WorldKey key) {
             settings = Vanilla.LOOKUP.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(
                     key.largeBiomes ? NoiseGeneratorSettings.LARGE_BIOMES : NoiseGeneratorSettings.OVERWORLD).value();
-            state = RandomState.create(Vanilla.LOOKUP.lookupOrThrow(Registries.NOISE), key.seed, settings);
+            state = RandomState.create(settings, Vanilla.LOOKUP.lookupOrThrow(Registries.NOISE), key.seed);
             var water = new Aquifer.FluidStatus(settings.seaLevel(), settings.defaultFluid());
             var lava = new Aquifer.FluidStatus(-54, Blocks.LAVA.defaultBlockState());
             // Same built-in Overworld global picker as NoiseBasedChunkGenerator (without debug fluid disabling).
@@ -185,10 +182,11 @@ public final class OverworldTerrainSampler {
         private SurfaceGrid generate(TileKey key) {
             var noiseSettings = settings.noiseSettings();
             int minY = noiseSettings.minY();
-            // The aquifer covers the whole column, as in vanilla; density comes in slabs from the top.
-            var volume = new DensityVolume(TILE_SIZE, noiseSettings.height(), TILE_SIZE,
-                    key.x * TILE_SIZE * key.step + key.phaseX, minY,
-                    key.z * TILE_SIZE * key.step + key.phaseZ, key.step, 1, key.step);
+            int cellWidth = noiseSettings.getCellWidth();
+            int cellHeight = noiseSettings.getCellHeight();
+            int group = Math.max(1, cellWidth / key.step);
+            int originX = key.x * TILE_SIZE * key.step + key.phaseX;
+            int originZ = key.z * TILE_SIZE * key.step + key.phaseZ;
             int columns = TILE_SIZE * TILE_SIZE;
             int[] tops = new int[columns];
             int[] floors = new int[columns];
@@ -196,70 +194,83 @@ public final class OverworldTerrainSampler {
             boolean[] done = new boolean[columns];
             Arrays.fill(tops, minY - 1);
             Arrays.fill(floors, minY - 1);
-            int remaining = columns;
-            try (var noise = new NoiseChunk(state, null, settings, fluids, Blender.empty(), volume)) {
-                var finalDensity = noise.cachingSamplers().get(settings.noiseRouter().finalDensity());
-                int slabBottom;
-                for (int slabTop = minY + noiseSettings.height() - TOP_SLIDE_END_DEPTH; slabTop > minY && remaining > 0;
-                     slabTop = slabBottom) {
-                    // Bottoms on cell boundaries keep vanilla's interpolation, and so every density, bit-identical.
-                    slabBottom = Math.max(minY, slabTop - SLAB_HEIGHT);
-                    // Only the rectangle of columns still looking for their floor, e.g. the sea part of a coast.
-                    int minX = TILE_SIZE, maxX = -1, minZ = TILE_SIZE, maxZ = -1;
-                    for (int index = 0; index < columns; ++index) {
-                        if (done[index]) continue;
-                        minX = Math.min(minX, index % TILE_SIZE);
-                        maxX = Math.max(maxX, index % TILE_SIZE);
-                        minZ = Math.min(minZ, index / TILE_SIZE);
-                        maxZ = Math.max(maxZ, index / TILE_SIZE);
-                    }
-                    var slab = new DensityVolume(maxX - minX + 1, slabTop - slabBottom, maxZ - minZ + 1,
-                            volume.blockX(minX), slabBottom, volume.blockZ(minZ), key.step, 1, key.step);
-                    try (var density = finalDensity.sampleVolume(slab)) {
-                        for (int z = minZ; z <= maxZ; ++z) {
-                            int blockZ = volume.blockZ(z);
-                            for (int x = minX; x <= maxX; ++x) {
-                                int index = z * TILE_SIZE + x;
-                                if (done[index]) continue;
-                                int blockX = volume.blockX(x);
-                                for (int y = slab.sizeY() - 1; y >= 0; --y) {
-                                    int blockY = slab.blockY(y);
-                                    var block = noise.aquifer().computeSubstance(blockX, blockY, blockZ,
-                                            density.get(slab.indexUnchecked(x - minX, y, z - minZ)));
-                                    if (block == null) block = settings.defaultBlock();
-                                    if (block.isAir()) continue;
-                                    if (tops[index] < minY) {
-                                        tops[index] = blockY;
-                                        fluid[index] = !block.getFluidState().isEmpty();
-                                    }
-                                    if (block.getFluidState().isEmpty()) {
-                                        floors[index] = blockY;
-                                        done[index] = true;
-                                        --remaining;
-                                        break;
+            // Before 26.3, vanilla exposes cell interpolation instead of density volumes.
+            // Share each cell's noise and aquifer across all sampled columns inside it.
+            for (int gz = 0; gz < TILE_SIZE; gz += group) {
+                for (int gx = 0; gx < TILE_SIZE; gx += group) {
+                    int cellX = Math.floorDiv(originX + gx * key.step, cellWidth) * cellWidth;
+                    int cellZ = Math.floorDiv(originZ + gz * key.step, cellWidth) * cellWidth;
+                    var noise = new SurfaceNoise(state, cellX, cellZ, settings, fluids);
+                    noise.initializeForFirstCellX();
+                    noise.advanceCellX(0);
+                    int remaining = group * group;
+                    try {
+                        int topCell = (noiseSettings.height() - TOP_SLIDE_END_DEPTH) / cellHeight - 1;
+                        for (int cy = topCell; cy >= 0 && remaining > 0; --cy) {
+                            noise.selectCellYZ(cy, 0);
+                            for (int dy = cellHeight - 1; dy >= 0 && remaining > 0; --dy) {
+                                int blockY = minY + cy * cellHeight + dy;
+                                noise.updateForY(blockY, (double) dy / cellHeight);
+                                for (int x = gx; x < gx + group; ++x) {
+                                    int blockX = originX + x * key.step;
+                                    noise.updateForX(blockX, (double) (blockX - cellX) / cellWidth);
+                                    for (int z = gz; z < gz + group; ++z) {
+                                        int index = z * TILE_SIZE + x;
+                                        if (done[index]) continue;
+                                        int blockZ = originZ + z * key.step;
+                                        noise.updateForZ(blockZ, (double) (blockZ - cellZ) / cellWidth);
+                                        var block = noise.sample();
+                                        if (block == null) block = settings.defaultBlock();
+                                        if (block.isAir()) continue;
+                                        if (tops[index] < minY) {
+                                            tops[index] = blockY;
+                                            fluid[index] = !block.getFluidState().isEmpty();
+                                        }
+                                        if (block.getFluidState().isEmpty()) {
+                                            floors[index] = blockY;
+                                            done[index] = true;
+                                            --remaining;
+                                        }
                                     }
                                 }
                             }
                         }
+                    } finally {
+                        noise.stopInterpolation();
                     }
                 }
             }
             var result = new SurfaceGrid(new float[columns], new float[columns], new int[columns]);
-            var resolver = Vanilla.BIOMES.createResolver(state.createClimateSampler(SamplerContext.EMPTY_UNCACHED));
             for (int z = 0; z < TILE_SIZE; ++z) {
-                int blockZ = volume.blockZ(z);
+                int blockZ = originZ + z * key.step;
                 for (int x = 0; x < TILE_SIZE; ++x) {
-                    int blockX = volume.blockX(x);
+                    int blockX = originX + x * key.step;
                     int index = z * TILE_SIZE + x;
                     int top = tops[index];
                     result.heights[index] = top;
                     result.floors[index] = floors[index];
-                    var biome = resolver.getNoiseBiome(blockX >> 2, top >> 2, blockZ >> 2);
+                    var biome = Vanilla.BIOMES.getNoiseBiome(blockX >> 2, top >> 2, blockZ >> 2, state.sampler());
                     result.colors[index] = surfaceColor(biome, blockX, top, blockZ, fluid[index], settings.seaLevel(), key.step);
                 }
             }
             return result;
         }
+    }
+
+    /** Exposes vanilla's protected material sampler without a mixin or a world chunk. */
+    private static final class SurfaceNoise extends NoiseChunk {
+        private static final DensityFunctions.BeardifierOrMarker NO_STRUCTURES = new DensityFunctions.BeardifierOrMarker() {
+            @Override public double compute(net.minecraft.world.level.levelgen.DensityFunction.FunctionContext context) { return 0; }
+            @Override public double minValue() { return 0; }
+            @Override public double maxValue() { return 0; }
+        };
+        private SurfaceNoise(RandomState state, int x, int z, NoiseGeneratorSettings settings,
+                             Aquifer.FluidPicker fluids) {
+            super(1, state, x, z, settings.noiseSettings(), NO_STRUCTURES,
+                    settings, fluids, Blender.empty());
+        }
+
+        private BlockState sample() { return getInterpolatedState(); }
     }
 
     /** Surface colour of one sample; see {@link BiomeSurfacePalette}. */
@@ -268,7 +279,7 @@ public final class OverworldTerrainSampler {
     }
 
     private static final class Vanilla {
-        private static final HolderLookup.Provider LOOKUP = VanillaRegistries.createWorldLookup();
+        private static final HolderLookup.Provider LOOKUP = VanillaRegistries.createLookup();
         private static final MultiNoiseBiomeSource BIOMES = MultiNoiseBiomeSource.createFromPreset(
                 LOOKUP.lookupOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
                         .getOrThrow(MultiNoiseBiomeSourceParameterLists.OVERWORLD));

@@ -146,7 +146,7 @@ public final class NearestScreen extends SeedAtlasScreen {
 
 	private void finish(final String name, final NearestFinder.Result result) {
 		this.busy = false;
-		if (this.minecraft.gui.screen() != this) return;
+		if (this.minecraft.screen != this) return;
 		if (result == null) {
 			this.status = Component.translatable("message.seedatlas_xaero.nearest_none", name);
 		} else if (!MapNavigator.open(result.x(), result.z(), name, waypointMode)) {
@@ -166,6 +166,6 @@ public final class NearestScreen extends SeedAtlasScreen {
 
 	@Override
 	public void onClose() {
-		this.minecraft.gui.setScreen(this.parent);
+		this.minecraft.setScreen(this.parent);
 	}
 }

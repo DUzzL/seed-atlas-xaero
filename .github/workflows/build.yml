@@ -83,7 +83,7 @@ jobs:
           fi
       - uses: actions/upload-artifact@v7
         with:
-          name: seedatlas-xaero-26.3-${{ matrix.loader }}
+          name: seedatlas-xaero-26.1.2-${{ matrix.loader }}
           path: |
             build/libs/
             ${{ matrix.loader }}/build/libs/

@@ -50,6 +50,16 @@ public final class XaeroCompatibilityTest {
             "explored terrain's render type");
         breaks(installed, "xaero/map/region/texture/BranchTextureRenderer",
             node -> removeRendererCalls(method(node, "render")), "branch render type");
+        for (String name : new String[]{"ensureRenderTarget", "render"}) {
+            breaks(installed, "xaero/map/region/texture/BranchTextureRenderer", node -> {
+                var target = method(node, name);
+                for (var instruction : target.instructions.toArray()) {
+                    if (instruction instanceof MethodInsnNode call && call.name.equals("clearRenderTarget")) {
+                        target.instructions.remove(instruction);
+                    }
+                }
+            }, "no longer clears unexplored terrain");
+        }
         breaks(installed, "xaero/map/region/BranchLeveledRegion",
             node -> node.methods.removeIf(m -> m.name.equals("findCacheFile")), "findCacheFile");
         breaks(installed, "xaero/map/MapProcessor", node -> node.methods.removeIf(m -> m.name.equals("getCurrentCaveLayer")),

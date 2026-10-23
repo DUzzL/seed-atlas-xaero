@@ -164,7 +164,7 @@ public final class SeedAtlasCommands {
 		return 1;
 	}
 
-	/** "1.21.5 – 26.1.2", or "Auto (26.3)" while the context follows the running game. */
+	/** "1.21.5 – 26.1.2", or "Auto (26.1.2)" while the context follows the running game. */
 	public static Component gameVersionName() {
 		GameVersion version = SeedAtlasClientState.activeGameVersion();
 		return SeedAtlasClientState.gameVersionAutomatic()

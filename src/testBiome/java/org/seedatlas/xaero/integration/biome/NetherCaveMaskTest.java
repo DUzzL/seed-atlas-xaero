@@ -14,11 +14,11 @@ import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.levelgen.carver.CaveWorldCarver;
-import net.minecraft.world.level.levelgen.carver.WorldCarver;
+import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
 import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 import org.seedatlas.xaero.nativeapi.WorldType;
 
-/** Offline 26.3 carver and native-floor checks; no world, chunk or client startup. */
+/** Offline 26.1.2 carver and native-floor checks; no world, chunk or client startup. */
 public final class NetherCaveMaskTest {
     private static final long SEED = 2842062689604764280L;
 
@@ -26,14 +26,14 @@ public final class NetherCaveMaskTest {
         invalidAreas(); // Invalid inputs must fail even before Minecraft registries exist.
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        check(SharedConstants.getCurrentVersion().name().equals("26.3"), "Requires Minecraft 26.3");
+        check(SharedConstants.getCurrentVersion().name().equals("26.1.2"), "Requires Minecraft 26.1.2");
         identicalVanillaCarvers();
         knownColumnAndNativeFloor();
         samplingAndHaloConsistency();
         seedAndResultIsolation();
         concurrentReads();
         boundedCache();
-        System.out.println("Nether cave masks: 7 test groups passed (vanilla 26.3 + native integration)");
+        System.out.println("Nether cave masks: 7 test groups passed (vanilla 26.1.2 + native integration)");
         if (Arrays.asList(args).contains("--benchmark")) benchmark();
     }
 
@@ -51,14 +51,14 @@ public final class NetherCaveMaskTest {
     }
 
     private static void identicalVanillaCarvers() {
-        var biomes = VanillaRegistries.createWorldLookup().lookupOrThrow(Registries.BIOME);
-        var expected = new ArrayList<Holder<WorldCarver>>();
+        var biomes = VanillaRegistries.createLookup().lookupOrThrow(Registries.BIOME);
+        var expected = new ArrayList<Holder<ConfiguredWorldCarver<?>>>();
         biomes.getOrThrow(Biomes.NETHER_WASTES).value().getGenerationSettings().getCarvers().forEach(expected::add);
-        check(!expected.isEmpty() && expected.stream().allMatch(h -> h.value() instanceof CaveWorldCarver),
+        check(!expected.isEmpty() && expected.stream().allMatch(h -> h.value().worldCarver() instanceof CaveWorldCarver),
                 "Built-in Nether uses actual CaveWorldCarver instances");
         for (var biome : List.of(Biomes.NETHER_WASTES, Biomes.SOUL_SAND_VALLEY, Biomes.CRIMSON_FOREST,
                 Biomes.WARPED_FOREST, Biomes.BASALT_DELTAS)) {
-            var actual = new ArrayList<Holder<WorldCarver>>();
+            var actual = new ArrayList<Holder<ConfiguredWorldCarver<?>>>();
             biomes.getOrThrow(biome).value().getGenerationSettings().getCarvers().forEach(actual::add);
             check(expected.equals(actual), "Same ordered carvers for " + biome);
         }

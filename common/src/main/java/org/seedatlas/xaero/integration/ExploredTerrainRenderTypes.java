@@ -2,17 +2,17 @@ package org.seedatlas.xaero.integration;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
-import com.mojang.renderpearl.api.pipeline.BlendFactor;
-import com.mojang.renderpearl.api.pipeline.BlendFunction;
-import com.mojang.renderpearl.api.pipeline.ColorTargetState;
-import com.mojang.renderpearl.api.pipeline.DepthStencilState;
-import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import com.mojang.renderpearl.api.pipeline.UniformType;
-import com.mojang.renderpearl.api.textures.AddressMode;
-import com.mojang.renderpearl.api.textures.FilterMode;
-import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.blaze3d.platform.SourceFactor;
+import com.mojang.blaze3d.platform.DestFactor;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
+import com.mojang.blaze3d.pipeline.DepthStencilState;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.shaders.UniformType;
+import com.mojang.blaze3d.textures.AddressMode;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuSampler;
 import java.util.OptionalDouble;
 import java.util.function.Supplier;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
@@ -51,17 +51,15 @@ public final class ExploredTerrainRenderTypes {
                 .withLocation(Identifier.fromNamespaceAndPath("seedatlas_xaero", "pipeline/explored_map"))
                 .withVertexShader(LibShaders.WORLD_MAP)
                 .withFragmentShader(Identifier.fromNamespaceAndPath("seedatlas_xaero", "core/explored_map"))
-                .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX)
-                .withPrimitiveTopology(PrimitiveTopology.QUADS)
-                .withBindGroupLayout(matrices())
-                .withBindGroupLayout(BindGroupLayout.builder()
-                    .withUniform("Sampler0", UniformType.COMBINED_IMAGE_SAMPLER)
-                    .withUniform(BuiltInCustomUniforms.BRIGHTNESS.name(), BuiltInCustomUniforms.BRIGHTNESS.type())
-                    .withUniform(BuiltInCustomUniforms.WITH_LIGHT.name(), BuiltInCustomUniforms.WITH_LIGHT.type())
-                    .build())
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX, VertexFormat.Mode.QUADS)
+                .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+                .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+                .withSampler("Sampler0")
+                .withUniform(BuiltInCustomUniforms.BRIGHTNESS.name(), BuiltInCustomUniforms.BRIGHTNESS.type())
+                .withUniform(BuiltInCustomUniforms.WITH_LIGHT.name(), BuiltInCustomUniforms.WITH_LIGHT.type())
                 // Xaero's map writes its colour and keeps the target's alpha.
                 .withColorTargetState(new ColorTargetState(
-                    new BlendFunction(BlendFactor.ONE, BlendFactor.ZERO, BlendFactor.ZERO, BlendFactor.ONE)))
+                    new BlendFunction(SourceFactor.ONE, DestFactor.ZERO, SourceFactor.ZERO, DestFactor.ONE)))
                 .withCull(false)
                 .withDepthStencilState(DepthStencilState.DEFAULT)
                 .build();
@@ -77,12 +75,10 @@ public final class ExploredTerrainRenderTypes {
                 .withLocation(Identifier.fromNamespaceAndPath("seedatlas_xaero", "pipeline/explored_map_branch"))
                 .withVertexShader(LibShaders.WORLD_MAP_BRANCH)
                 .withFragmentShader(Identifier.fromNamespaceAndPath("seedatlas_xaero", "core/explored_map_branch"))
-                .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX)
-                .withPrimitiveTopology(PrimitiveTopology.QUADS)
-                .withBindGroupLayout(matrices())
-                .withBindGroupLayout(BindGroupLayout.builder()
-                    .withUniform("Sampler0", UniformType.COMBINED_IMAGE_SAMPLER)
-                    .build())
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX, VertexFormat.Mode.QUADS)
+                .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+                .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+                .withSampler("Sampler0")
                 .withColorTargetState(ColorTargetState.DEFAULT)
                 .withCull(false)
                 .build();
@@ -92,10 +88,4 @@ public final class ExploredTerrainRenderTypes {
         return branch;
     }
 
-    private static BindGroupLayout matrices() {
-        return BindGroupLayout.builder()
-            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
-            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
-            .build();
-    }
 }

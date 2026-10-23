@@ -161,9 +161,12 @@ public final class XaeroCompatibility {
         }
         ClassNode branch = xaeroClass("xaero/map/region/texture/BranchTextureRenderer");
         if (branch != null) {
-            field(branch, "black4f", "Lorg/joml/Vector4f;", false);
-            require(branch.methods.stream().anyMatch(m -> m.name.equals("<init>")),
-                "BranchTextureRenderer has no constructor to inject into");
+            for (String name : List.of("ensureRenderTarget", "render")) {
+                require(branch.methods.stream().filter(m -> m.name.equals(name)
+                        && invokes(m, "xaero/lib/client/graphics/util/TextureUtils", "clearRenderTarget",
+                            "(Lcom/mojang/blaze3d/pipeline/RenderTarget;I)V")).count() == 1,
+                    "BranchTextureRenderer." + name + " no longer clears unexplored terrain");
+            }
             require(branch.methods.stream().filter(m -> m.name.equals("render")
                     && invokes(m, PROVIDER, "getRenderer", GET_RENDERER)).count() == 1,
                 "BranchTextureRenderer.render no longer picks the branch render type");

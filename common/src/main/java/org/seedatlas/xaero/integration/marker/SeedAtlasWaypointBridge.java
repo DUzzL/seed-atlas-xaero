@@ -104,7 +104,7 @@ public final class SeedAtlasWaypointBridge {
             SupportMods.xaeroMinimap.createWaypoint(map, marker.x(),
                 marker.y() == Integer.MIN_VALUE ? 32767 : marker.y(), marker.z(),
                 dimension.calculateDimScale(processor.getWorldDimensionTypeRegistry()), true);
-            if (Minecraft.getInstance().gui.screen() == map) unavailable(map);
+            if (Minecraft.getInstance().screen == map) unavailable(map);
         } catch (LinkageError error) {
             disable(error);
             unavailable(map);

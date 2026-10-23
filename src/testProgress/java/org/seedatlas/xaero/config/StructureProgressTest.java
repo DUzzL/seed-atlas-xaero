@@ -184,16 +184,16 @@ public final class StructureProgressTest {
     /** A server on another Minecraft release keeps its version; unknown names are dropped. */
     private static void gameVersions(final Path file, final SeedAtlasConfig config) throws Exception {
         check(config.gameVersion("server-a") == null, "Contexts follow the running game by default");
-        check(config.setGameVersion("server-a", "26.2"), "Choose 26.2 for one server");
-        check(!config.setGameVersion("server-a", "26.2"), "Choosing the same version is idempotent");
+        check(config.setGameVersion("server-a", "26.1.2"), "Choose 26.1.2 for one server");
+        check(!config.setGameVersion("server-a", "26.1.2"), "Choosing the same version is idempotent");
         SeedAtlasConfigIO.save(file, config);
         var root = Files.readString(file);
-        check(root.contains("\"gameVersions\"") && root.contains("\"26.2\""), "Version is written per context");
-        Files.writeString(file, root.replace("\"26.2\"", "\"not-a-version\""));
+        check(root.contains("\"gameVersions\"") && root.contains("\"26.1.2\""), "Version is written per context");
+        Files.writeString(file, root.replace("\"26.1.2\"", "\"not-a-version\""));
         check(SeedAtlasConfigIO.load(file).gameVersion("server-a") == null, "Unknown versions fall back to automatic");
         SeedAtlasConfigIO.save(file, config);
         var loaded = SeedAtlasConfigIO.load(file);
-        check("26.2".equals(loaded.gameVersion("server-a")) && loaded.gameVersion("server-b") == null,
+        check("26.1.2".equals(loaded.gameVersion("server-a")) && loaded.gameVersion("server-b") == null,
             "Version survives reload for its own context only");
         check(loaded.setGameVersion("server-a", null) && loaded.gameVersion("server-a") == null, "Back to automatic");
     }

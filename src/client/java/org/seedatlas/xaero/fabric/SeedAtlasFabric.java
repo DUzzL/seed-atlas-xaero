@@ -27,7 +27,7 @@ public final class SeedAtlasFabric implements ClientModInitializer {
 
     private record Source(FabricClientCommandSource source) implements SeedAtlasCommandSource {
         @Override public Minecraft getClient() { return source.getClient(); }
-        @Override public boolean attended() { return source.attended(); }
+        @Override public boolean attended() { return getClient().player != null && getClient().level != null; }
         @Override public void sendFeedback(Component message) { source.sendFeedback(message); }
         @Override public void sendError(Component message) { source.sendError(message); }
     }

@@ -20,7 +20,7 @@ import org.seedatlas.xaero.nativeapi.SeedAtlasNative;
 
 /**
  * World type and the Minecraft version the world or server generates with, e.g. 26.2 for a 26.2
- * server joined from a 26.3 client. Versions are listed as spans with identical world generation;
+ * server joined from a 26.1.2 client. Versions are listed as spans with identical world generation;
  * the choice belongs to the current world or server only.
  */
 public final class WorldGenerationScreen extends SeedAtlasScreen {
@@ -68,7 +68,7 @@ public final class WorldGenerationScreen extends SeedAtlasScreen {
 	public void onClose() {
 		SeedAtlasClientState.save();
 		// Parent is the main Seed Atlas settings screen; keep heavy work paused.
-		this.minecraft.gui.setScreen(this.parent);
+		this.minecraft.setScreen(this.parent);
 	}
 
 	static Component worldTypeMessage(final boolean largeBiomes) {

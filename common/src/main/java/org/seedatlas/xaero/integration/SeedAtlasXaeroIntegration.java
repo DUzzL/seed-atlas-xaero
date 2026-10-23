@@ -151,7 +151,7 @@ public final class SeedAtlasXaeroIntegration {
     /** Map-only maintenance, including the map drawn behind Seed Atlas menus. */
     public static void tickBackground(Minecraft minecraft) {
         synchronizeRevision();
-        Screen screen = minecraft.gui.screen();
+        Screen screen = minecraft.screen;
         if (fullMapActive && !(screen instanceof GuiMap)
             && !(screen instanceof IScreenBase menu && menu.getEscape() instanceof GuiMap)) {
             // A menu over the map was closed without returning to it.

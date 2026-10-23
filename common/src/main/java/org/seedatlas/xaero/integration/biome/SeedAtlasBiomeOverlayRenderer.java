@@ -35,7 +35,7 @@ import org.seedatlas.xaero.nativeapi.BiomeSample;
 import org.seedatlas.xaero.nativeapi.Dimension;
 import org.seedatlas.xaero.nativeapi.GameVersion;
 import org.joml.Matrix4f;
-import xaero.lib.client.graphics.XaeroBufferProvider;
+import net.minecraft.client.renderer.MultiBufferSource.BufferSource;
 import xaero.lib.client.gui.widget.Tooltip;
 import xaero.map.WorldMapSession;
 import xaero.map.element.MapElementGraphics;
@@ -457,7 +457,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     @Override
     public void preRender(
         ElementRenderInfo renderInfo,
-        XaeroBufferProvider xaeroBufferProvider,
+        BufferSource xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider,
         boolean shadow
     ) {
@@ -479,7 +479,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
     @Override
     public void postRender(
         ElementRenderInfo renderInfo,
-        XaeroBufferProvider xaeroBufferProvider,
+        BufferSource xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider,
         boolean shadow
     ) {
@@ -494,7 +494,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         double partialY,
         ElementRenderInfo renderInfo,
         MapElementGraphics graphics,
-        XaeroBufferProvider xaeroBufferProvider,
+        BufferSource xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider
     ) {
     }
@@ -509,7 +509,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         double partialY,
         ElementRenderInfo renderInfo,
         MapElementGraphics graphics,
-        XaeroBufferProvider xaeroBufferProvider,
+        BufferSource xaeroBufferProvider,
         MultiTextureRenderTypeRendererProvider rendererProvider
     ) {
         // This element only supplies the biome tooltip. The raster has already
@@ -769,7 +769,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
                 image = new NativeImage(size, size, false);
                 // Worker threads already converted ARGB -> ABGR. Bulk-copy into
                 // NativeImage's native pixel buffer instead of 65k setPixel calls.
-                IntBuffer pixels = image.getPixelBytes()
+                IntBuffer pixels = org.lwjgl.system.MemoryUtil.memByteBuffer(image.getPointer(), cpu.abgr.length * Integer.BYTES)
                     .order(ByteOrder.nativeOrder())
                     .asIntBuffer();
                 pixels.put(0, cpu.abgr, 0, cpu.abgr.length);
