@@ -133,18 +133,15 @@ abstract class GuiMapMixin {
         }, () -> new Tooltip(layerButtonText()));
         map.addButton(this.seedAtlas$layerButton);
 
-        // Xaero's gear in the top left corner becomes two labelled buttons, one per settings menu.
-        var font = Minecraft.getInstance().font;
+        // Compact controls in the top-left corner; full names remain available as tooltips.
         Button xaeroSettings = this.settingsButton;
-        Component mapLabel = Component.translatable("options.seedatlas_xaero.map_settings");
-        Component atlasLabel = Component.translatable("options.seedatlas_xaero.seed_atlas_settings");
-        int mapWidth = font.width(mapLabel) + 12;
-        Tooltip mapTooltip = new Tooltip(Component.translatable("tooltip.seedatlas_xaero.map_settings"));
-        Tooltip atlasTooltip = new Tooltip(Component.translatable("screen.seedatlas_xaero.settings"));
-        this.seedAtlas$mapSettingsButton = new TooltipButton(0, 0, mapWidth, 20, mapLabel,
+        int settingsY = 0;
+        Tooltip mapTooltip = new Tooltip(Component.translatable("options.seedatlas_xaero.map_settings"));
+        Tooltip atlasTooltip = new Tooltip(Component.translatable("options.seedatlas_xaero.seed_atlas_settings"));
+        this.seedAtlas$mapSettingsButton = new TooltipButton(0, settingsY, 20, 20, Component.literal("M"),
             button -> this.onSettingsButton(xaeroSettings), () -> mapTooltip);
         map.addButton(this.seedAtlas$mapSettingsButton);
-        this.seedAtlas$settingsButton = new TooltipButton(mapWidth + 2, 0, font.width(atlasLabel) + 12, 20, atlasLabel,
+        this.seedAtlas$settingsButton = new TooltipButton(22, settingsY, 20, 20, Component.literal("SA"),
             button -> SeedAtlasClientState.openSettings(map), () -> atlasTooltip);
         map.addButton(this.seedAtlas$settingsButton);
         if (xaeroSettings != null) {
