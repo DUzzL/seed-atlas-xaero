@@ -378,6 +378,8 @@ final class SeedAtlasStructureMarkerSource {
                  TRIAL_CHAMBERS, PILLAGER_OUTPOST, DESERT_PYRAMID,
                  JUNGLE_TEMPLE, SWAMP_HUT, IGLOO ->
                 scale >= 0.125 && radius <= 24576;
+            // Monuments are frequent in oceans: hidden before the true landmarks.
+            case OCEAN_MONUMENT -> scale >= 0.0625;
             default -> scale >= 0.03125 || isLongRangeLandmark(marker);
         };
     }
@@ -386,7 +388,6 @@ final class SeedAtlasStructureMarkerSource {
         return marker == MarkerType.SPAWN
             || marker == MarkerType.STRONGHOLD
             || marker == MarkerType.WOODLAND_MANSION
-            || marker == MarkerType.OCEAN_MONUMENT
             || marker == MarkerType.ANCIENT_CITY
             || marker == MarkerType.NETHER_FORTRESS
             || marker == MarkerType.BASTION

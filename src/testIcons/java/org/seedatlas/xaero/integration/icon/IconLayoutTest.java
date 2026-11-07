@@ -21,7 +21,13 @@ public final class IconLayoutTest {
             "Non-square icons must retain their aspect ratio");
         check(layout.left() + layout.displayWidth() == layout.right(), "Horizontal bounds");
         check(layout.top() + layout.displayHeight() == layout.bottom(), "Vertical bounds");
-        IconLayout empty = measure(new BufferedImage(19, 20, BufferedImage.TYPE_INT_ARGB));
+        IconLayout larger = layout.withDisplaySize(24);
+        check(larger.displayWidth() == 24 && larger.displayHeight() == 12,
+            "A larger display size scales both sides and keeps the aspect ratio");
+        check(larger.u() == layout.u() && larger.width() == layout.width(), "Same source bounds");
+        check(IconLayout.displaySizeFor("ancient_city") == 24, "Ancient cities are drawn larger");
+        check(IconLayout.displaySizeFor("village") == IconLayout.DISPLAY_SIZE, "Other icons keep the common size");
+                IconLayout empty = measure(new BufferedImage(19, 20, BufferedImage.TYPE_INT_ARGB));
         check(empty.width() == 19 && empty.height() == 20, "Empty pack textures need valid full UVs");
 
         Path directory = Path.of("common/src/main/resources/assets/seedatlas_xaero/textures/structure");
