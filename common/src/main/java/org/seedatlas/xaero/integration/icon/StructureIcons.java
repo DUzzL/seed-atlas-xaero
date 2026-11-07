@@ -98,7 +98,7 @@ public final class StructureIcons {
     private static Map<String, Icon> defaults() {
         Map<String, Icon> result = new HashMap<>();
         SOURCES.forEach((id, source) -> result.put(id,
-            new Icon(source.texture(), new IconLayout(16, 16, 0, 0, 16, 16), source.block())));
+            new Icon(source.texture(), new IconLayout(16, 16, 0, 0, 16, 16, IconLayout.displaySizeFor(id)), source.block())));
         return Map.copyOf(result);
     }
 
@@ -117,11 +117,11 @@ public final class StructureIcons {
                             if (source.composer() != null) {
                                 NativeImage image = source.composer().compose(resources);
                                 composed.put(source.texture(), image);
-                                loaded.put(id, new Icon(source.texture(), measure(image), source.block()));
+                                loaded.put(id, new Icon(source.texture(), measure(image).withDisplaySize(IconLayout.displaySizeFor(id)), source.block()));
                             } else {
                                 try (var stream = resources.open(source.texture());
                                      var image = NativeImage.read(stream)) {
-                                    loaded.put(id, new Icon(source.texture(), measure(image), source.block()));
+                                    loaded.put(id, new Icon(source.texture(), measure(image).withDisplaySize(IconLayout.displaySizeFor(id)), source.block()));
                                 }
                             }
                         } catch (IOException | RuntimeException exception) {

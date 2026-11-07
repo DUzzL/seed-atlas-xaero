@@ -24,6 +24,7 @@ import net.minecraft.util.Mth;
 import org.seedatlas.xaero.config.MarkerType;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.icon.CompletedBadge;
+import org.seedatlas.xaero.integration.icon.IconLayout;
 import org.seedatlas.xaero.integration.icon.StructureIcons;
 
 /**
@@ -310,7 +311,8 @@ final class MarkerToggleList extends AbstractWidget {
 			}
 
 			var structureIcon = StructureIcons.get(this.marker.id());
-			var layout = structureIcon.layout();
+			// The list keeps every icon at the common size; only the map draws some larger.
+			var layout = structureIcon.layout().withDisplaySize(IconLayout.DISPLAY_SIZE);
 			int iconX = x + 6 + (ICON_SIZE - layout.displayWidth()) / 2;
 			int iconY = y + (ROW_HEIGHT - layout.displayHeight()) / 2;
 			graphics.blit(

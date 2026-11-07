@@ -2,15 +2,39 @@ package org.seedatlas.xaero.integration.icon;
 
 import java.util.function.IntBinaryOperator;
 
-/** Visible source bounds, fitted into a common marker size without distorting the image. */
-public record IconLayout(int textureWidth, int textureHeight, int u, int v, int width, int height) {
+/**
+ * Visible source bounds, fitted into a marker size without distorting the image. The size is
+ * {@link #DISPLAY_SIZE} unless an icon asks for more ({@link #withDisplaySize}).
+ */
+public record IconLayout(int textureWidth, int textureHeight, int u, int v, int width, int height, int displaySize) {
     public static final int DISPLAY_SIZE = 18;
+
+    /**
+     * Icons drawn larger than {@link #DISPLAY_SIZE} on the map: the warden's head is wide and dark,
+     * so it read as small next to the block icons.
+     */
+    private static final java.util.Map<String, Integer> DISPLAY_SIZES = java.util.Map.of("ancient_city", 24);
+
+    /** The map size of the icon with this marker id. */
+    public static int displaySizeFor(String id) {
+        return DISPLAY_SIZES.getOrDefault(id, DISPLAY_SIZE);
+    }
 
     public IconLayout {
         if (textureWidth <= 0 || textureHeight <= 0 || width <= 0 || height <= 0
-            || u < 0 || v < 0 || u + width > textureWidth || v + height > textureHeight) {
+            || u < 0 || v < 0 || u + width > textureWidth || v + height > textureHeight
+            || displaySize <= 0) {
             throw new IllegalArgumentException("Invalid icon bounds");
         }
+    }
+
+    public IconLayout(int textureWidth, int textureHeight, int u, int v, int width, int height) {
+        this(textureWidth, textureHeight, u, v, width, height, DISPLAY_SIZE);
+    }
+
+    /** The same bounds drawn with {@code size} pixels on the longer side. */
+    public IconLayout withDisplaySize(int size) {
+        return new IconLayout(textureWidth, textureHeight, u, v, width, height, size);
     }
 
     public static IconLayout measure(int width, int height, IntBinaryOperator argb) {
@@ -32,11 +56,11 @@ public record IconLayout(int textureWidth, int textureHeight, int u, int v, int 
     }
 
     public int displayWidth() {
-        return Math.max(1, Math.round((float) width * DISPLAY_SIZE / Math.max(width, height)));
+        return Math.max(1, Math.round((float) width * displaySize / Math.max(width, height)));
     }
 
     public int displayHeight() {
-        return Math.max(1, Math.round((float) height * DISPLAY_SIZE / Math.max(width, height)));
+        return Math.max(1, Math.round((float) height * displaySize / Math.max(width, height)));
     }
 
     public int left() { return -displayWidth() / 2; }
