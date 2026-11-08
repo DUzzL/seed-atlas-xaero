@@ -12,7 +12,7 @@ if(NOT SEEDATLAS_SOURCE_DIR)
     include(FetchContent)
     FetchContent_Declare(seedatlas_source
         URL https://codeload.github.com/DUzzL/Seed-Atlas/tar.gz/afe92141a1e49c838f95cccb082fd3b0b4cd4b8c
-        # TODO: the SHA-256 of this tarball, once the commit is on GitHub
+        URL_HASH SHA256=71b23c89984ddea5fea18b53e015812a840255f2f56d346ff7b2d36a80c53268
         SOURCE_SUBDIR seedatlas-no-cmake-subdirectory
     )
     FetchContent_MakeAvailable(seedatlas_source)
