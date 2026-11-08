@@ -42,8 +42,8 @@ cmake_args=(
     -DCMAKE_INSTALL_PREFIX="$resource_root"
     -DBUILD_TESTING="$run_tests"
 )
-if [[ -n "${SEEDATLAS_ENGINE_DIR:-}" ]]; then
-    cmake_args+=("-DSEEDATLAS_ENGINE_DIR=$SEEDATLAS_ENGINE_DIR")
+if [[ -n "${SEEDATLAS_SOURCE_DIR:-}" ]]; then
+    cmake_args+=("-DSEEDATLAS_SOURCE_DIR=$SEEDATLAS_SOURCE_DIR")
 fi
 case "$platform" in
     macos-aarch64)

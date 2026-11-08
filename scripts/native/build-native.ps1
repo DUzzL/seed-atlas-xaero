@@ -45,8 +45,8 @@ $cmakeArguments = @(
     "-DCMAKE_INSTALL_PREFIX=$resourceRoot",
     "-DBUILD_TESTING=$($RunTests.IsPresent.ToString().ToUpperInvariant())"
 )
-if ($env:SEEDATLAS_ENGINE_DIR) {
-    $cmakeArguments += "-DSEEDATLAS_ENGINE_DIR=$($env:SEEDATLAS_ENGINE_DIR)"
+if ($env:SEEDATLAS_SOURCE_DIR) {
+    $cmakeArguments += "-DSEEDATLAS_SOURCE_DIR=$($env:SEEDATLAS_SOURCE_DIR)"
 }
 
 cmake @cmakeArguments

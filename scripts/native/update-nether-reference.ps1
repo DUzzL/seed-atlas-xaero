@@ -7,7 +7,9 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $build = Join-Path $root 'build/native-reference'
 New-Item -ItemType Directory -Force $build | Out-Null
 $source = Join-Path $root 'src/main/native/tests/NetherVanillaReference.java'
-$fixture = Join-Path $root 'src/main/native/tests/nether_vanilla_26_3.h'
+# The fixture belongs to the engine's C ABI in the Seed Atlas repository.
+if (-not $env:SEEDATLAS_SOURCE_DIR) { throw 'Set SEEDATLAS_SOURCE_DIR to a Seed Atlas checkout' }
+$fixture = Join-Path $env:SEEDATLAS_SOURCE_DIR 'seedatlas-sax/tests/nether_vanilla_26_3.h'
 # Java argument files require forward slashes inside quoted Windows paths.
 @('-cp', ('"' + $MinecraftClasspath.Replace('\', '/') + '"'),
     '-d', ('"' + $build.Replace('\', '/') + '"'),
