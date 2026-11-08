@@ -60,6 +60,9 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 > {
     public static final SeedAtlasBiomeOverlayRenderer INSTANCE =
         new SeedAtlasBiomeOverlayRenderer();
+    /** Independent viewport/cache: panning the world map must not evict the minimap's view. */
+    public static final SeedAtlasBiomeOverlayRenderer MINIMAP =
+        new SeedAtlasBiomeOverlayRenderer();
 
     private static final int FINE_TEXTURE_SIZE = 256;
     private static final int COARSE_TEXTURE_SIZE = 128;
@@ -407,6 +410,18 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         int flooredCameraX, int flooredCameraZ,
         MultiTextureRenderTypeRendererProvider rendererProvider, boolean aboveTerrain
     ) {
+        Minecraft minecraft = Minecraft.getInstance();
+        renderBackground(pose, dimension, cameraX, cameraZ, scale, flooredCameraX, flooredCameraZ,
+            rendererProvider, aboveTerrain, guiWidth(minecraft), guiHeight(minecraft));
+    }
+
+    public void renderBackground(
+        PoseStack pose, ResourceKey<Level> dimension,
+        double cameraX, double cameraZ, double scale,
+        int flooredCameraX, int flooredCameraZ,
+        MultiTextureRenderTypeRendererProvider rendererProvider, boolean aboveTerrain,
+        int viewportWidth, int viewportHeight
+    ) {
         if (!this.mapActive || SeedAtlasXaeroIntegration.isHeavyWorkPaused()
             || !SeedAtlasXaeroIntegration.isLayerActive()) {
             this.context.slices = List.of();
@@ -416,9 +431,8 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
         boolean focused = this.highlightMask.length != 0;
         boolean overlayExplored = SeedAtlasClientState.config().overlayExplored();
         if (aboveTerrain != (focused || overlayExplored)) return;
-        Minecraft minecraft = Minecraft.getInstance();
         observeView(dimension, cameraX, cameraZ, scale,
-            guiWidth(minecraft), guiHeight(minecraft));
+            viewportWidth, viewportHeight);
         drainUploads();
         ViewRequest view = this.currentView;
         this.context.slices = view == null ? List.of() : buildSlices(view);
@@ -682,7 +696,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
     private void cancelQueuedViewportTasks(Set<TileKey> desired) {
         for (Runnable queued : new ArrayList<>(WORKERS.getQueue())) {
-            if (!(queued instanceof TileTask task) || task.category >= 3
+            if (!(queued instanceof TileTask task) || this.pending.get(task.key) != task || task.category >= 3
                 || desired.contains(task.key)) {
                 continue;
             }
@@ -694,7 +708,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
     private void cancelAllQueuedTasks() {
         for (Runnable queued : new ArrayList<>(WORKERS.getQueue())) {
-            if (queued instanceof TileTask task && WORKERS.getQueue().remove(task)) {
+            if (queued instanceof TileTask task && this.pending.get(task.key) == task && WORKERS.getQueue().remove(task)) {
                 this.pending.remove(task.key, task);
             }
         }
@@ -711,7 +725,7 @@ public final class SeedAtlasBiomeOverlayRenderer extends ElementRenderer<
 
     private void pruneBackgroundWork(Set<TileKey> desired) {
         for (Runnable queued : new ArrayList<>(WORKERS.getQueue())) {
-            if (!(queued instanceof TileTask task) || task.category < 3
+            if (!(queued instanceof TileTask task) || this.pending.get(task.key) != task || task.category < 3
                 || desired.contains(task.key) || this.viewportDesired.contains(task.key)) {
                 continue;
             }

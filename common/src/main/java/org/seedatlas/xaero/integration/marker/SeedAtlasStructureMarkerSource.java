@@ -166,7 +166,7 @@ final class SeedAtlasStructureMarkerSource {
         }
     }
 
-    private void clear(SeedAtlasStructureContext context) {
+    void clear(SeedAtlasStructureContext context) {
         context.visibleMarkerIds = Set.of();
         if (this.requested == null && context.markers.isEmpty()) {
             return;

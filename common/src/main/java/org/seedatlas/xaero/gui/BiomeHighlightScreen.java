@@ -14,11 +14,14 @@ import org.seedatlas.xaero.nativeapi.BiomeSample;
 
 /** Biome focus selector, laid out like MarkerSettingsScreen. */
 public final class BiomeHighlightScreen extends SeedAtlasScreen {
-    private static final int HEADER_HEIGHT = 92;
+    private static final int HEADER_HEIGHT = 118;
     private static final int FOOTER_HEIGHT = 38;
     private List<BiomeSample> biomes = List.of();
     private Button highlightButton;
     private Button clearButton;
+    private Button viewSelectedButton;
+    private BiomeToggleList list;
+    private boolean viewSelected;
 
     public BiomeHighlightScreen(Screen parent) {
         super(Component.translatable("screen.seedatlas_xaero.biome_highlights"), parent);
@@ -46,12 +49,18 @@ public final class BiomeHighlightScreen extends SeedAtlasScreen {
                 SeedAtlasClientState.clearHighlightedBiomes();
                 refreshLabels();
             }).bounds(left + halfWidth + 6, 36, listWidth - halfWidth - 6, 20).build());
-        BiomeToggleList list = new BiomeToggleList(this.minecraft, left, HEADER_HEIGHT, listWidth, listHeight, this.biomes, this::refreshLabels);
-        EditBox search = new EditBox(this.font, left, 62, listWidth, 20, Component.translatable("options.seedatlas_xaero.biome_search"));
+        this.list = new BiomeToggleList(this.minecraft, left, HEADER_HEIGHT, listWidth, listHeight, this.biomes, this::refreshLabels);
+        EditBox search = new EditBox(this.font, left, 88, listWidth, 20, Component.translatable("options.seedatlas_xaero.biome_search"));
         search.setHint(Component.translatable("options.seedatlas_xaero.biome_search"));
-        search.setResponder(list::setFilter);
+        search.setResponder(this.list::setFilter);
         this.addRenderableWidget(search);
-        this.addRenderableWidget(list);
+        this.viewSelectedButton = this.addRenderableWidget(Button.builder(viewSelectedMessage(), button -> {
+            this.viewSelected = !this.viewSelected;
+            this.list.setViewSelected(this.viewSelected);
+            refreshLabels();
+        }).bounds(left, 62, listWidth, 20).build());
+        this.list.setViewSelected(this.viewSelected);
+        this.addRenderableWidget(this.list);
         refreshLabels();
 
         int doneWidth = Math.min(200, Math.max(120, this.width - 24));
@@ -80,11 +89,23 @@ public final class BiomeHighlightScreen extends SeedAtlasScreen {
         this.highlightButton.setMessage(highlightSwitchMessage());
         this.highlightButton.active = !this.biomes.isEmpty();
         this.clearButton.active = SeedAtlasClientState.config().highlightedBiomeCount() > 0;
+        if (this.viewSelectedButton != null) {
+            this.viewSelectedButton.setMessage(viewSelectedMessage());
+            this.viewSelectedButton.active = !this.biomes.isEmpty();
+        }
+        if (this.list != null) {
+            this.list.refresh();
+        }
     }
 
     private static Component highlightSwitchMessage() {
         return Component.translatable("options.seedatlas_xaero.highlight_enabled",
             SeedAtlasSettingsScreen.toggleValue(SeedAtlasClientState.config().biomeHighlightEnabled()));
+    }
+
+    private Component viewSelectedMessage() {
+        return Component.translatable("options.seedatlas_xaero.biome_view_selected",
+            SeedAtlasSettingsScreen.toggleValue(this.viewSelected));
     }
 
     @Override

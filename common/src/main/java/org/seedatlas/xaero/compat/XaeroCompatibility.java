@@ -42,6 +42,8 @@ public final class XaeroCompatibility {
         "org/seedatlas/xaero/SeedAtlasXaero",
         "org/seedatlas/xaero/command/SeedAtlasCommands",
         "org/seedatlas/xaero/mixin/GuiMapMixin",
+        "org/seedatlas/xaero/mixin/MinimapFBORendererMixin",
+        "org/seedatlas/xaero/mixin/MinimapWorldMapMixin",
         "org/seedatlas/xaero/mixin/BranchTextureRendererMixin",
         "org/seedatlas/xaero/mixin/BranchRegionTextureMixin",
         "org/seedatlas/xaero/mixin/BranchLeveledRegionMixin",

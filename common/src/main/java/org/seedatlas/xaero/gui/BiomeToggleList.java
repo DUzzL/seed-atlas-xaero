@@ -45,6 +45,9 @@ final class BiomeToggleList extends AbstractWidget {
 	private BooleanSupplier actionsEnabled = () -> true;
 	private double scrollAmount;
 	private boolean draggingScrollbar;
+	private String query = "";
+	/** When set, only highlighted biomes are listed; combines with the search query. */
+	private boolean viewSelected;
 
 	BiomeToggleList(final Minecraft minecraft, final int x, final int y, final int width, final int height, final List<BiomeSample> biomes, final Runnable onChange) {
 		super(x, y, width, height, Component.translatable("screen.seedatlas_xaero.biome_highlights"));
@@ -63,11 +66,30 @@ final class BiomeToggleList extends AbstractWidget {
 	}
 
 	void setFilter(final String query) {
-		String q = query.trim().toLowerCase(Locale.ROOT);
-		this.rows = this.allRows.stream().filter(r -> q.isEmpty()
-			|| SeedAtlasXaeroIntegration.biomeDisplayName(r.marker.name()).getString().toLowerCase(Locale.ROOT).contains(q)
-			|| r.marker.name().toLowerCase(Locale.ROOT).contains(q)).toList();
+		this.query = query.trim().toLowerCase(Locale.ROOT);
 		this.scrollAmount = 0.0D;
+		applyFilter();
+	}
+
+	void setViewSelected(final boolean on) {
+		this.viewSelected = on;
+		this.scrollAmount = 0.0D;
+		applyFilter();
+	}
+
+	/** Re-applies the filters after an external state change (for example Clear selection); keeps scroll. */
+	void refresh() {
+		applyFilter();
+	}
+
+	private void applyFilter() {
+		this.rows = this.allRows.stream().filter(r -> ViewFilter.accepts(matchesQuery(r.marker), this.viewSelected, this.isOn.test(r.marker))).toList();
+	}
+
+	private boolean matchesQuery(final BiomeSample marker) {
+		return this.query.isEmpty()
+			|| SeedAtlasXaeroIntegration.biomeDisplayName(marker.name()).getString().toLowerCase(Locale.ROOT).contains(this.query)
+			|| marker.name().toLowerCase(Locale.ROOT).contains(this.query);
 	}
 
 	@Override
@@ -90,6 +112,11 @@ final class BiomeToggleList extends AbstractWidget {
 		int contentBottom = this.getBottom() - CONTENT_PAD;
 
 		graphics.enableScissor(contentLeft - 1, contentTop - 1, contentRight + 1, contentBottom + 1);
+		if (this.rows.isEmpty() && !this.allRows.isEmpty()) {
+			graphics.centeredText(this.minecraft.font,
+				Component.translatable("screen.seedatlas_xaero.biome_highlights.no_matches"),
+				this.getX() + this.getWidth() / 2, contentTop + 10, 0xFFB8B8B8);
+		}
 		int y = contentTop - (int) Math.round(this.scrollAmount);
 		for (int index = 0; index < this.rows.size(); index++) {
 			Row row = this.rows.get(index);
@@ -253,6 +280,7 @@ final class BiomeToggleList extends AbstractWidget {
 
 		private void toggle() {
 			BiomeToggleList.this.flip.accept(this.marker);
+			BiomeToggleList.this.applyFilter();
 			BiomeToggleList.this.onChange.run();
 			this.toggle.setMessage(toggleMessage(this.marker));
 		}
@@ -313,5 +341,15 @@ final class BiomeToggleList extends AbstractWidget {
 
 	private Component toggleMessage(final BiomeSample marker) {
 		return this.actionLabel != null ? this.actionLabel : SeedAtlasSettingsScreen.toggleValue(this.isOn.test(marker));
+	}
+
+	/** Pure visibility rule, kept free of Minecraft types so it can be checked without a client. */
+	static final class ViewFilter {
+		private ViewFilter() {
+		}
+
+		static boolean accepts(final boolean matchesQuery, final boolean viewSelected, final boolean highlighted) {
+			return matchesQuery && (!viewSelected || highlighted);
+		}
 	}
 }

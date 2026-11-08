@@ -32,6 +32,7 @@ public final class SeedAtlasXaeroIntegration {
     private static final Object NATIVE_LOCK = new Object();
 
     private static volatile boolean fullMapActive;
+    private static volatile long minimapFrameNanos;
     /** True while a Seed Atlas menu covers the world map without drawing it. */
     private static volatile boolean heavyWorkPaused;
     private static final StateRevisionTracker REVISIONS = new StateRevisionTracker();
@@ -70,7 +71,18 @@ public final class SeedAtlasXaeroIntegration {
     }
 
     public static boolean isLayerActive() {
-        return fullMapActive && !heavyWorkPaused && isLayerConfigured();
+        return (fullMapActive || minimapFrameNanos != 0) && !heavyWorkPaused && isLayerConfigured();
+    }
+
+    /** Called only from a visible minimap's terrain pass, never from a background tick. */
+    public static boolean beginMinimapFrame() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (fullMapActive || heavyWorkPaused || !isLayerConfigured()
+            || minecraft.level == null || minecraft.gui.screen() != null) return false;
+        minimapFrameNanos = System.nanoTime();
+        SeedAtlasBiomeOverlayRenderer.MINIMAP.setMapActive(true);
+        synchronizeRevision();
+        return true;
     }
 
     public static boolean isLayerConfigured() {
@@ -127,7 +139,10 @@ public final class SeedAtlasXaeroIntegration {
     /** Applies configuration changes without touching Xaero's leaf-region cache. */
     public static void synchronizeRevision() {
         REVISIONS.synchronize(SeedAtlasClientState.revision(), heavyWorkPaused,
-            revision -> SeedAtlasBiomeOverlayRenderer.INSTANCE.onStateRevision(revision));
+            revision -> {
+                SeedAtlasBiomeOverlayRenderer.INSTANCE.onStateRevision(revision);
+                SeedAtlasBiomeOverlayRenderer.MINIMAP.onStateRevision(revision);
+            });
     }
 
     /** Records and schedules the current viewport without waiting for Xaero to request chunks. */
@@ -150,6 +165,12 @@ public final class SeedAtlasXaeroIntegration {
 
     /** Map-only maintenance, including the map drawn behind Seed Atlas menus. */
     public static void tickBackground(Minecraft minecraft) {
+        if (minimapFrameNanos != 0 && (minecraft.level == null || minecraft.gui.screen() != null
+            || !isLayerConfigured() || System.nanoTime() - minimapFrameNanos > 250_000_000L)) {
+            minimapFrameNanos = 0;
+            SeedAtlasBiomeOverlayRenderer.MINIMAP.idleCompletely();
+            org.seedatlas.xaero.integration.marker.SeedAtlasStructureRenderer.MINIMAP.idle();
+        }
         synchronizeRevision();
         Screen screen = minecraft.gui.screen();
         if (fullMapActive && !(screen instanceof GuiMap)

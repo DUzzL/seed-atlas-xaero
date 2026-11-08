@@ -119,6 +119,8 @@
     "options.seedatlas_xaero.biome_highlights":  "Biome highlights...",
     "options.seedatlas_xaero.highlight_enabled":  "Biome highlighting: %s",
     "options.seedatlas_xaero.biome_search": "Search biomes...",
+    "options.seedatlas_xaero.biome_view_selected": "View Selected: %s",
+    "screen.seedatlas_xaero.biome_highlights.no_matches": "No biomes match this filter.",
     "options.seedatlas_xaero.highlight_clear":  "Clear selection",
     "options.seedatlas_xaero.highlight_select":  "Select biomes (%s) %s",
     "options.seedatlas_xaero.highlight_select_open":  "Select biomes (%s) %s",

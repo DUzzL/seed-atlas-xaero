@@ -33,6 +33,7 @@ public final class ExploredTerrainRenderTypes {
     private static final Supplier<GpuSampler> NEAREST = () -> RenderSystem.getDevice()
         .createSampler(AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE, FilterMode.NEAREST, FilterMode.NEAREST, 1, OptionalDouble.of(0.0));
     private static RenderType map;
+    private static RenderType minimap;
     private static RenderType branch;
 
     private ExploredTerrainRenderTypes() {
@@ -45,30 +46,43 @@ public final class ExploredTerrainRenderTypes {
         return type;
     }
 
+    public static RenderType minimap() {
+        if (minimap == null) minimap = createMap(true);
+        return minimap;
+    }
+
     private static RenderType map() {
-        if (map == null) {
-            RenderPipeline pipeline = RenderPipeline.builder()
-                .withLocation(Identifier.fromNamespaceAndPath("seedatlas_xaero", "pipeline/explored_map"))
-                .withVertexShader(LibShaders.WORLD_MAP)
-                .withFragmentShader(Identifier.fromNamespaceAndPath("seedatlas_xaero", "core/explored_map"))
-                .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX)
-                .withPrimitiveTopology(PrimitiveTopology.QUADS)
-                .withBindGroupLayout(matrices())
-                .withBindGroupLayout(BindGroupLayout.builder()
-                    .withUniform("Sampler0", UniformType.COMBINED_IMAGE_SAMPLER)
-                    .withUniform(BuiltInCustomUniforms.BRIGHTNESS.name(), BuiltInCustomUniforms.BRIGHTNESS.type())
-                    .withUniform(BuiltInCustomUniforms.WITH_LIGHT.name(), BuiltInCustomUniforms.WITH_LIGHT.type())
-                    .build())
-                // Xaero's map writes its colour and keeps the target's alpha.
-                .withColorTargetState(new ColorTargetState(
-                    new BlendFunction(BlendFactor.ONE, BlendFactor.ZERO, BlendFactor.ZERO, BlendFactor.ONE)))
-                .withCull(false)
-                .withDepthStencilState(DepthStencilState.DEFAULT)
-                .build();
-            map = XaeroRenderType.createRenderType("seedatlas_explored_map",
-                RenderSetup.builder(pipeline).withTexture("Sampler0", WorldMap.guiTextures, NEAREST));
-        }
+        if (map == null) map = createMap(false);
         return map;
+    }
+
+    private static RenderType createMap(boolean forMinimap) {
+        String name = forMinimap ? "explored_minimap" : "explored_map";
+        RenderPipeline pipeline = RenderPipeline.builder()
+            .withLocation(Identifier.fromNamespaceAndPath("seedatlas_xaero", "pipeline/" + name))
+            .withVertexShader(LibShaders.WORLD_MAP)
+            .withFragmentShader(Identifier.fromNamespaceAndPath("seedatlas_xaero", "core/explored_map"))
+            .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX)
+            .withPrimitiveTopology(PrimitiveTopology.QUADS)
+            .withBindGroupLayout(matrices())
+            .withBindGroupLayout(BindGroupLayout.builder()
+                .withUniform("Sampler0", UniformType.COMBINED_IMAGE_SAMPLER)
+                .withUniform(BuiltInCustomUniforms.BRIGHTNESS.name(), BuiltInCustomUniforms.BRIGHTNESS.type())
+                .withUniform(BuiltInCustomUniforms.WITH_LIGHT.name(), BuiltInCustomUniforms.WITH_LIGHT.type())
+                .build())
+            // Minimap FBOs need explored alpha written; World Map keeps its target alpha.
+            .withColorTargetState(new ColorTargetState(terrainBlend(forMinimap)))
+            .withCull(false)
+            .withDepthStencilState(DepthStencilState.DEFAULT)
+            .build();
+        return XaeroRenderType.createRenderType("seedatlas_" + name,
+            RenderSetup.builder(pipeline).withTexture("Sampler0", WorldMap.guiTextures, NEAREST));
+    }
+
+    static BlendFunction terrainBlend(boolean forMinimap) {
+        return forMinimap
+            ? new BlendFunction(BlendFactor.ONE, BlendFactor.ONE_MINUS_SRC_ALPHA, BlendFactor.ONE, BlendFactor.ONE_MINUS_SRC_ALPHA)
+            : new BlendFunction(BlendFactor.ONE, BlendFactor.ZERO, BlendFactor.ZERO, BlendFactor.ONE);
     }
 
     private static RenderType branch() {
