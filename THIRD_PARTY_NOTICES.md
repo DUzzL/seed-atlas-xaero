@@ -2,9 +2,10 @@
 
 ## Seed Atlas and Cubiomes Viewer
 
-The generation engine and the bundled Seed Atlas icons are sourced from
-https://github.com/DUzzL/Seed-Atlas at commit
-fc2c628693bc72130d7c16a21636f50d57553ddf. Seed Atlas derives from
+The generation engine, its C ABI for the mods (`seedatlas-sax`) and the
+bundled Seed Atlas icons are sourced from https://github.com/DUzzL/Seed-Atlas
+(the engine and the ABI at commit afe92141a1e49c838f95cccb082fd3b0b4cd4b8c, see
+`src/main/native/CMakeLists.txt`). Seed Atlas derives from
 https://github.com/Cubitect/cubiomes-viewer (GPLv3).
 
 The Abandoned Camp markers use their own flat pixel-art tents: the normal camp
