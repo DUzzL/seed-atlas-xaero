@@ -12,6 +12,7 @@ import org.seedatlas.xaero.nativeapi.GameVersion;
 /** Deterministic unlimited-zoom bounds checks; no Minecraft window or native work. */
 public final class BiomeViewportTest {
     public static void run() {
+        independentMapQueues();
         SeedAtlasBiomeOverlayRenderer renderer = SeedAtlasBiomeOverlayRenderer.INSTANCE;
         renderer.setMapActive(true);
         for (int category : new int[]{0, 1, 2}) {
@@ -134,6 +135,53 @@ public final class BiomeViewportTest {
             renderer.setMapActive(false);
         }
         System.out.println("Biome viewport unlimited-zoom bounds and recovery tests passed");
+    }
+
+    /** Both viewports share worker threads, but cancelling one must not strand the other's pending tiles. */
+    @SuppressWarnings("unchecked")
+    private static void independentMapQueues() {
+        var world = SeedAtlasBiomeOverlayRenderer.INSTANCE;
+        var minimap = SeedAtlasBiomeOverlayRenderer.MINIMAP;
+        check(world != minimap, "Map viewports have independent state");
+        try {
+            var configDirectory = java.nio.file.Files.createTempDirectory("seedatlas-queue-test");
+            org.seedatlas.xaero.config.SeedAtlasClientState.initialize(configDirectory);
+            java.nio.file.Files.delete(configDirectory);
+            var keyMethod = world.getClass().getDeclaredMethod("tileKey", long.class, boolean.class, GameVersion.class,
+                Dimension.class, ResourceKey.class, int.class, int.class, int.class, int.class, int.class);
+            keyMethod.setAccessible(true);
+            Object key = keyMethod.invoke(null, 1L, false, GameVersion.NEWEST, Dimension.OVERWORLD, null, 64, 1, 256, 0, 0);
+            Class<?> taskClass = Arrays.stream(world.getClass().getDeclaredClasses())
+                .filter(type -> type.getSimpleName().equals("TileTask")).findFirst().orElseThrow();
+            var constructor = taskClass.getDeclaredConstructors()[0];
+            constructor.setAccessible(true);
+            var pool = (java.util.concurrent.ThreadPoolExecutor)field("WORKERS", world.getClass()).get(null);
+            var worldPending = (java.util.Map<Object, Object>)field("pending", world.getClass()).get(world);
+            var miniPending = (java.util.Map<Object, Object>)field("pending", minimap.getClass()).get(minimap);
+            for (String operation : List.of("cancelAllQueuedTasks", "cancelQueuedViewportTasks", "pruneBackgroundWork")) {
+                int category = operation.equals("pruneBackgroundWork") ? 3 : 0;
+                Runnable worldTask = (Runnable)constructor.newInstance(world, key, 0L, category, 0L, 0L, false);
+                Runnable miniTask = (Runnable)constructor.newInstance(minimap, key, 0L, category, 0L, 1L, false);
+                worldPending.put(key, worldTask);
+                miniPending.put(key, miniTask);
+                pool.getQueue().add(worldTask);
+                pool.getQueue().add(miniTask);
+                var cancel = operation.equals("cancelAllQueuedTasks") ? world.getClass().getDeclaredMethod(operation)
+                    : world.getClass().getDeclaredMethod(operation, Set.class);
+                cancel.setAccessible(true);
+                if (operation.equals("cancelAllQueuedTasks")) cancel.invoke(world);
+                else cancel.invoke(world, Set.of());
+                check(!pool.getQueue().contains(worldTask) && !worldPending.containsKey(key), operation + " cancels own task");
+                check(pool.getQueue().contains(miniTask) && miniPending.get(key) == miniTask, operation + " preserves minimap work");
+                minimap.idleCompletely();
+                check(!pool.getQueue().contains(miniTask) && miniPending.isEmpty(), "Minimap can cancel its own work");
+            }
+        } catch (ReflectiveOperationException | java.io.IOException exception) {
+            throw new AssertionError(exception);
+        } finally {
+            world.idleCompletely();
+            minimap.idleCompletely();
+        }
     }
 
     private static boolean view(SeedAtlasBiomeOverlayRenderer renderer, double x, double z,

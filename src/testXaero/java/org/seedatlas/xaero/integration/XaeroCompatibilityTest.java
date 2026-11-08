@@ -28,6 +28,7 @@ import org.seedatlas.xaero.compat.XaeroCompatibility.ClassSource;
  */
 public final class XaeroCompatibilityTest {
     public static void main(String[] args) throws IOException {
+        org.seedatlas.xaero.compat.MinimapCompatibilityTest.run();
         ClassSource installed = installedXaero();
         XaeroCompatibility.Report report = XaeroCompatibility.check(installed);
         report.problems().forEach(problem -> System.out.println("Incompatible: " + problem));
@@ -66,6 +67,7 @@ public final class XaeroCompatibilityTest {
             node -> node.methods.removeIf(m -> m.name.equals("createTempWaypoint"))));
         check(optional.compatible() && optional.warnings().stream().anyMatch(w -> w.contains("createTempWaypoint")),
             "A missing optional waypoint hook only disables that feature: " + optional);
+        ExploredTerrainBlendTest.run();
         ExploredEdgeCachesTest.run();
         System.out.println("Xaero compatibility checks passed (" + report.checked().size() + " classes)");
     }

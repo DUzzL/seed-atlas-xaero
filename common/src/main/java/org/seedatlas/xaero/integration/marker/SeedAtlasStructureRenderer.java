@@ -3,6 +3,8 @@ package org.seedatlas.xaero.integration.marker;
 import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.List;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
 import org.seedatlas.xaero.config.SeedAtlasClientState;
 import org.seedatlas.xaero.integration.SeedAtlasXaeroIntegration;
 import org.seedatlas.xaero.integration.icon.CompletedBadge;
@@ -23,6 +25,7 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
     SeedAtlasStructureRenderer
 > {
     public static final SeedAtlasStructureRenderer INSTANCE = new SeedAtlasStructureRenderer();
+    public static final SeedAtlasStructureRenderer MINIMAP = new SeedAtlasStructureRenderer();
 
     private final SeedAtlasStructureMarkerSource source;
 
@@ -37,6 +40,37 @@ public final class SeedAtlasStructureRenderer extends ElementRenderer<
     ) {
         super(context, provider, reader);
         this.source = new SeedAtlasStructureMarkerSource();
+    }
+
+    public void idle() {
+        this.source.clear(this.context);
+    }
+
+    /** Uses the same snapshots, visibility rules, textures and completion badges as the world map. */
+    public void renderMinimap(PoseStack pose, ResourceKey<Level> dimension,
+        double cameraX, double cameraZ, int originX, int originZ, double scale, int viewportSize,
+        MultiTextureRenderTypeRendererProvider rendererProvider) {
+        // shortcut: FBO icons rotate/scale with terrain; move to the HUD pass for native waypoint sizing.
+        this.context.dimension = dimension;
+        this.context.updateZoom(scale, 1.0, viewportSize);
+        this.source.request(this.context, dimension, cameraX, cameraZ, scale, viewportSize, viewportSize);
+        this.context.batchedIcons = rendererProvider.getRenderer(CustomRenderTypes.GUI_NEAREST);
+        MapElementGraphics graphics = new MapElementGraphics(pose);
+        for (SeedAtlasStructureMarker marker : this.context.markers) {
+            if (!this.context.visibleMarkerIds.contains(marker.type().id())
+                || this.reader.isHidden(marker, this.context)) continue;
+            double x = marker.x() - cameraX, z = marker.z() - cameraZ;
+            double radius = viewportSize / scale / 2.0 + 32.0 / scale;
+            if (Math.abs(x) > radius || Math.abs(z) > radius) continue;
+            pose.pushPose();
+            renderElement(marker, false, 2.0, (float)(1.0 / scale),
+                marker.x() - originX, marker.z() - originZ, null, graphics,
+                graphics.getBufferSource(), rendererProvider);
+            pose.popPose();
+        }
+        graphics.flush();
+        rendererProvider.draw(this.context.batchedIcons);
+        this.context.batchedIcons = null;
     }
 
     @Override

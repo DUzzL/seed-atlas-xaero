@@ -234,5 +234,7 @@ tasks.register('xaeroCompatibilityTest', JavaExec) {
     // -PxaeroCompatJar=<jar> checks a newer Xaero release against these compiled classes.
     def compatJar = providers.gradleProperty('xaeroCompatJar')
     if (compatJar.isPresent()) systemProperty 'seedatlas.xaeroJar', compatJar.get()
+    def minimapJar = providers.gradleProperty('xaeroMinimapJar')
+    if (minimapJar.isPresent()) systemProperty 'seedatlas.minimapJar', minimapJar.get()
 }
 tasks.named('check') { dependsOn tasks.named('xaeroCompatibilityTest') }

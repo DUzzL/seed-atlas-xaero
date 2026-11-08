@@ -8,7 +8,9 @@
     "BranchTextureRendererMixin",
     "BranchRegionTextureMixin",
     "BranchLeveledRegionMixin",
-    "WorldMapClientOnlyMixin"
+    "WorldMapClientOnlyMixin",
+    "MinimapFBORendererMixin",
+    "MinimapWorldMapMixin"
   ],
   "injectors": {
     "defaultRequire": 1

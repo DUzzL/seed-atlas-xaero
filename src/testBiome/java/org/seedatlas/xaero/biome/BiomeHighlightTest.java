@@ -13,6 +13,7 @@ import org.seedatlas.xaero.integration.biome.EndTerrainStylerTest;
 /** Verifies the Seed Atlas style highlight colours without opening a Minecraft client. */
 public final class BiomeHighlightTest {
     public static void main(String[] args) {
+        org.seedatlas.xaero.gui.BiomeToggleFilterTest.main(args);
         BiomeViewportTest.run();
         EndTerrainStylerTest.run();
         surfaceStyling();

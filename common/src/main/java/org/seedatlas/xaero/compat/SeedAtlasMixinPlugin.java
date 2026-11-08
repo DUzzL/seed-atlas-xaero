@@ -15,6 +15,7 @@ import org.spongepowered.asm.service.MixinService;
  */
 public final class SeedAtlasMixinPlugin implements IMixinConfigPlugin {
     private Boolean compatible;
+    private Boolean minimapCompatible;
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -33,7 +34,18 @@ public final class SeedAtlasMixinPlugin implements IMixinConfigPlugin {
             log(report);
             this.compatible = report.compatible();
         }
-        return this.compatible;
+        if (!this.compatible) return false;
+        if (mixinClassName.endsWith("MinimapFBORendererMixin") || mixinClassName.endsWith("MinimapWorldMapMixin")) {
+            if (this.minimapCompatible == null) {
+                this.minimapCompatible = MinimapCompatibility.compatible(SeedAtlasMixinPlugin::read);
+                if (!this.minimapCompatible && read(MinimapCompatibility.FBO) != null) {
+                    MixinService.getService().getLogger("seedatlas_xaero").warn(
+                        "Seed Atlas minimap layers disabled: installed Minimap render hooks changed; World Map layers remain available.");
+                }
+            }
+            return this.minimapCompatible;
+        }
+        return true;
     }
 
     /** Untransformed bytes: this runs while mixins are being prepared, before any target loads. */
