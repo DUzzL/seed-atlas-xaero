@@ -52,13 +52,23 @@ if(APPLE)
     )
 endif()
 
+# The engine relies on wrapping signed arithmetic, and its results must not
+# depend on the platform: no fused multiply-adds (clang fuses a*b+c on arm64
+# by default, GCC wherever FMA is available). The Seed Atlas makefile uses the
+# same flags.
 if(MSVC)
-    target_compile_options(seedatlas_xaero PRIVATE /W4 /O2)
+    set(SEEDATLAS_ENGINE_FLAGS /clang:-fwrapv /clang:-ffp-contract=off)
+else()
+    set(SEEDATLAS_ENGINE_FLAGS -fwrapv -ffp-contract=off)
+endif()
+
+if(MSVC)
+    target_compile_options(seedatlas_xaero PRIVATE /W4 /O2 ${SEEDATLAS_ENGINE_FLAGS})
     target_compile_definitions(seedatlas_xaero PRIVATE
         _CRT_SECURE_NO_WARNINGS=1 _USE_MATH_DEFINES=1)
 else()
     target_compile_options(seedatlas_xaero PRIVATE
-        -Wall -Wextra -Wpedantic -O3 -fno-strict-aliasing)
+        -Wall -Wextra -Wpedantic -O3 -fno-strict-aliasing ${SEEDATLAS_ENGINE_FLAGS})
     if(NOT WIN32)
         target_link_libraries(seedatlas_xaero PRIVATE m)
     endif()
@@ -88,6 +98,7 @@ if(BUILD_TESTING)
     add_executable(nether_reference_test tests/nether_reference_test.c ${SEEDATLAS_ENGINE_SOURCES})
     target_include_directories(nether_reference_test PRIVATE "${SEEDATLAS_ENGINE_DIR}")
     target_compile_definitions(nether_reference_test PRIVATE SEEDATLAS_XAERO_BUILD=1)
+    target_compile_options(nether_reference_test PRIVATE ${SEEDATLAS_ENGINE_FLAGS})
     if(MSVC)
         target_compile_options(nether_reference_test PRIVATE /UNDEBUG)
     else()
