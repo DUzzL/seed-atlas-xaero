@@ -7,6 +7,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.logging.ILogger;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
+import org.spongepowered.asm.service.IClassBytecodeProvider;
 import org.spongepowered.asm.service.MixinService;
 
 /**
@@ -28,7 +29,7 @@ public final class SeedAtlasMixinPlugin implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (this.compatible == null) {
-            XaeroCompatibility.Report report = XaeroCompatibility.check(SeedAtlasMixinPlugin::read);
+            XaeroCompatibility.Report report = XaeroCompatibility.check(classSource());
             XaeroCompatibility.publish(report);
             log(report);
             this.compatible = report.compatible();
@@ -36,11 +37,33 @@ public final class SeedAtlasMixinPlugin implements IMixinConfigPlugin {
         return this.compatible;
     }
 
-    /** Untransformed bytes: this runs while mixins are being prepared, before any target loads. */
-    private static ClassNode read(String internalName) {
+    /**
+     * Untransformed classes: this runs while mixins are being prepared, before any target loads.
+     * Fabric's Mixin service serves untransformed bytecode, but the Forge (ModLauncher) and NeoForge
+     * (FML) services refuse it with an IllegalArgumentException, and asking them for transformed
+     * bytecode would apply mixins while this decides whether to apply its own. So the class files
+     * are also read as plain resources from the game's class loaders.
+     */
+    static XaeroCompatibility.ClassSource classSource() {
+        return classSource(MixinService.getService().getBytecodeProvider(), Thread.currentThread().getContextClassLoader());
+    }
+
+    /** Visible for the compatibility test, which stands in for the Forge and NeoForge services. */
+    public static XaeroCompatibility.ClassSource classSource(IClassBytecodeProvider mixin, ClassLoader context) {
+        ClassLoader own = SeedAtlasMixinPlugin.class.getClassLoader();
+        return XaeroCompatibility.ClassSource.firstOf(
+            name -> readFromMixin(mixin, name),
+            context != null ? XaeroCompatibility.ClassSource.of(context) : name -> null,
+            own != context ? XaeroCompatibility.ClassSource.of(own) : name -> null);
+    }
+
+    private static ClassNode readFromMixin(IClassBytecodeProvider mixin, String internalName) {
         try {
-            return MixinService.getService().getBytecodeProvider().getClassNode(internalName.replace('/', '.'), false);
+            return mixin.getClassNode(internalName.replace('/', '.'), false);
         } catch (ClassNotFoundException | IOException exception) {
+            return null;
+        } catch (IllegalArgumentException | UnsupportedOperationException unsupported) {
+            // Forge and NeoForge: no untransformed bytecode from this service; the class loaders answer.
             return null;
         }
     }
