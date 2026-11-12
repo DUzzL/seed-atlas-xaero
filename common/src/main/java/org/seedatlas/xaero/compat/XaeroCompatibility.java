@@ -1,6 +1,7 @@
 package org.seedatlas.xaero.compat;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -60,6 +61,8 @@ public final class XaeroCompatibility {
     private final List<String> problems = new ArrayList<>();
     private final List<String> warnings = new ArrayList<>();
     private final Set<String> checked = new LinkedHashSet<>();
+    /** Classes the source failed on; already reported, so they are not also reported as missing. */
+    private final Set<String> unreadable = new HashSet<>();
 
     private XaeroCompatibility(ClassSource source) {
         this.source = source;
@@ -70,7 +73,10 @@ public final class XaeroCompatibility {
     public interface ClassSource {
         ClassNode read(String internalName);
 
-        /** Raw class files from a class loader, e.g. for mod code when the mixin plugin did not run. */
+        /**
+         * Raw, untransformed class files from a class loader. Null only when the loader has no such
+         * class file; a file that cannot be read throws, so it is not mistaken for a missing class.
+         */
         static ClassSource of(ClassLoader loader) {
             return name -> {
                 try (var stream = loader.getResourceAsStream(name + ".class")) {
@@ -78,9 +84,32 @@ public final class XaeroCompatibility {
                     ClassNode node = new ClassNode();
                     new ClassReader(stream).accept(node, 0);
                     return node;
-                } catch (IOException | RuntimeException exception) {
-                    return null;
+                } catch (IOException exception) {
+                    throw new UncheckedIOException(exception);
                 }
+            };
+        }
+
+        /**
+         * The first source that has the class. A source that throws is skipped; if no source has the
+         * class and one of them threw, that failure is rethrown so it is reported as unreadable
+         * instead of as a class Xaero removed.
+         */
+        static ClassSource firstOf(ClassSource... sources) {
+            return name -> {
+                RuntimeException failure = null;
+                for (ClassSource source : sources) {
+                    try {
+                        ClassNode node = source.read(name);
+                        if (node != null) return node;
+                    } catch (RuntimeException exception) {
+                        if (failure == null) failure = exception;
+                    } catch (LinkageError error) {
+                        if (failure == null) failure = new IllegalStateException(error);
+                    }
+                }
+                if (failure != null) throw failure;
+                return null;
             };
         }
     }
@@ -227,7 +256,7 @@ public final class XaeroCompatibility {
 
     private ClassNode xaeroClass(String name) {
         ClassNode node = node(name);
-        if (node == null) this.problems.add("Missing Xaero class " + name);
+        if (node == null && !this.unreadable.contains(name)) this.problems.add("Missing Xaero class " + name);
         return node;
     }
 
@@ -264,7 +293,7 @@ public final class XaeroCompatibility {
             if (!this.checked.add(name)) continue;
             ClassNode own = node(name);
             if (own == null) {
-                this.problems.add("Seed Atlas class " + name + " could not be read");
+                if (!this.unreadable.contains(name)) this.problems.add("Seed Atlas class " + name + " could not be read");
                 continue;
             }
             List<String> sink = OPTIONAL.contains(name) ? this.warnings : this.problems;
@@ -272,7 +301,7 @@ public final class XaeroCompatibility {
             for (String type : references.types) {
                 if (type.startsWith(OWN)) {
                     queue.add(type);
-                } else if (type.startsWith(XAERO) && node(type) == null) {
+                } else if (type.startsWith(XAERO) && node(type) == null && !this.unreadable.contains(type)) {
                     sink.add(simple(name) + " uses missing Xaero class " + type);
                 }
             }
@@ -439,6 +468,12 @@ public final class XaeroCompatibility {
             try {
                 return Optional.ofNullable(this.source.read(name));
             } catch (RuntimeException | LinkageError exception) {
+                // The class may well exist: for Xaero and Seed Atlas classes, say that it could not be
+                // read rather than that it is missing. Minecraft and the JDK are assumed, as below.
+                if (name.startsWith(XAERO) || name.startsWith(OWN)) {
+                    this.unreadable.add(name);
+                    this.problems.add("Could not read class " + name + " (" + exception + ")");
+                }
                 return Optional.empty();
             }
         }).orElse(null);
