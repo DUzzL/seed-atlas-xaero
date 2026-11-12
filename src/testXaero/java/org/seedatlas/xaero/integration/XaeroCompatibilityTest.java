@@ -18,6 +18,8 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.spongepowered.asm.service.IClassBytecodeProvider;
+import org.seedatlas.xaero.compat.SeedAtlasMixinPlugin;
 import org.seedatlas.xaero.compat.XaeroCompatibility;
 import org.seedatlas.xaero.compat.XaeroCompatibility.ClassSource;
 
@@ -66,8 +68,49 @@ public final class XaeroCompatibilityTest {
             node -> node.methods.removeIf(m -> m.name.equals("createTempWaypoint"))));
         check(optional.compatible() && optional.warnings().stream().anyMatch(w -> w.contains("createTempWaypoint")),
             "A missing optional waypoint hook only disables that feature: " + optional);
+        loaderMixinServices();
         ExploredEdgeCachesTest.run();
         System.out.println("Xaero compatibility checks passed (" + report.checked().size() + " classes)");
+    }
+
+    /**
+     * Forge's (ModLauncher) and NeoForge's (FML) Mixin services refuse untransformed bytecode with an
+     * IllegalArgumentException. The mixin plugin must still see Xaero, and a source that fails must
+     * never be reported as Xaero having removed classes.
+     */
+    private static void loaderMixinServices() {
+        IClassBytecodeProvider refusing = new IClassBytecodeProvider() {
+            @Override
+            public ClassNode getClassNode(String name) {
+                throw new AssertionError("The check must not request transformed bytecode of " + name);
+            }
+
+            @Override
+            public ClassNode getClassNode(String name, boolean runTransformers) {
+                return getClassNode(name, runTransformers, 0);
+            }
+
+            public ClassNode getClassNode(String name, boolean runTransformers, int readerFlags) {
+                if (!runTransformers) {
+                    throw new IllegalArgumentException("FML service does not currently support retrieval of untransformed bytecode");
+                }
+                throw new AssertionError("The check must not request transformed bytecode of " + name);
+            }
+        };
+        ClassLoader loader = XaeroCompatibilityTest.class.getClassLoader();
+        XaeroCompatibility.Report report = XaeroCompatibility.check(SeedAtlasMixinPlugin.classSource(refusing, loader));
+        check(report.compatible(), "Seed Atlas must see Xaero through Forge's and NeoForge's Mixin service: "
+            + report.problems());
+        check(XaeroCompatibility.check(SeedAtlasMixinPlugin.classSource(refusing, null)).compatible(),
+            "Without a context class loader, the plugin's own class loader must find Xaero");
+
+        XaeroCompatibility.Report unreadable = XaeroCompatibility.check(ClassSource.firstOf(name -> {
+            throw new IllegalStateException("broken class source");
+        }));
+        check(!unreadable.compatible() && unreadable.summary().startsWith("Could not read class ")
+                && unreadable.problems().stream().noneMatch(problem -> problem.contains("missing")
+                    || problem.contains("Missing")),
+            "A failing class source must be reported as unreadable, not as Xaero changes: " + unreadable.problems());
     }
 
     private static void removeRendererCalls(MethodNode method) {
